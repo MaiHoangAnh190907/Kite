@@ -1,7 +1,17 @@
 {
+  "includeCoAuthoredBy": false,
+  "gitAttribution": false,
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git pull:*)",
+      "Bash(\"C:\\\\Users\\\\potty\\\\AppData\\\\Roaming\\\\npm\\\\pnpm.cmd\" install)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
