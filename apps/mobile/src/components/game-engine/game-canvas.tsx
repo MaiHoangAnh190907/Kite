@@ -1,12 +1,11 @@
-import { Canvas } from '@shopify/react-native-skia';
-import { StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import type { PropsWithChildren } from 'react';
 
 export function GameCanvas({ children }: PropsWithChildren): React.JSX.Element {
   return (
-    <Canvas style={styles.canvas}>
+    <View style={styles.canvas}>
       {children}
-    </Canvas>
+    </View>
   );
 }
 

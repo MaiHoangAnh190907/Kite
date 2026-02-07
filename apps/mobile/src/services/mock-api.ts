@@ -1,3 +1,4 @@
+import 'react-native-get-random-values';
 import { v4 as uuid } from 'uuid';
 
 import type {
@@ -10,15 +11,23 @@ import type {
 
 const VALID_PIN = '1234';
 
-const MOCK_PATIENTS: PatientsResponse = {
-  patients: [
-    { id: uuid(), firstName: 'Emma', lastInitial: 'S', ageMonths: 62, ageDisplay: '5 yrs 2 mos', hasSessionToday: false },
-    { id: uuid(), firstName: 'Liam', lastInitial: 'J', ageMonths: 55, ageDisplay: '4 yrs 7 mos', hasSessionToday: false },
-    { id: uuid(), firstName: 'Olivia', lastInitial: 'W', ageMonths: 72, ageDisplay: '6 yrs 0 mos', hasSessionToday: true },
-    { id: uuid(), firstName: 'Noah', lastInitial: 'B', ageMonths: 49, ageDisplay: '4 yrs 1 mo', hasSessionToday: false },
-    { id: uuid(), firstName: 'Ava', lastInitial: 'D', ageMonths: 84, ageDisplay: '7 yrs 0 mos', hasSessionToday: false },
-  ],
-};
+function createMockPatients(): PatientsResponse {
+  return {
+    patients: [
+      { id: uuid(), firstName: 'Emma', lastInitial: 'S', ageMonths: 62, ageDisplay: '5 yrs 2 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'Liam', lastInitial: 'J', ageMonths: 55, ageDisplay: '4 yrs 7 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'Olivia', lastInitial: 'W', ageMonths: 72, ageDisplay: '6 yrs 0 mos', hasSessionToday: true },
+      { id: uuid(), firstName: 'Noah', lastInitial: 'B', ageMonths: 49, ageDisplay: '4 yrs 1 mo', hasSessionToday: false },
+      { id: uuid(), firstName: 'Ava', lastInitial: 'D', ageMonths: 84, ageDisplay: '7 yrs 0 mos', hasSessionToday: false },
+    ],
+  };
+}
+
+let _mockPatients: PatientsResponse | null = null;
+function getMockPatients(): PatientsResponse {
+  if (!_mockPatients) _mockPatients = createMockPatients();
+  return _mockPatients;
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,7 +47,7 @@ export async function mockTabletVerify(pin: string): Promise<TabletAuthResponse>
 
 export async function mockGetPatientsToday(): Promise<PatientsResponse> {
   await delay(300);
-  return MOCK_PATIENTS;
+  return getMockPatients();
 }
 
 export async function mockCreateSession(patientId: string): Promise<CreateSessionResponse> {

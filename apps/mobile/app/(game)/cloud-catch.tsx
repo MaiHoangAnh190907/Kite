@@ -1,19 +1,11 @@
+import 'react-native-get-random-values';
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import {
-  Canvas,
-  RoundedRect,
-  Circle,
-  Path,
-  Skia,
-  Group,
-  LinearGradient,
-  vec,
-  Rect,
-  Text as SkiaText,
-  useFont,
-} from '@shopify/react-native-skia';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+  View,
+  StyleSheet,
+  useWindowDimensions,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import { router } from 'expo-router';
 import { v4 as uuid } from 'uuid';
 
@@ -258,12 +250,10 @@ export default function CloudCatchScreen(): React.JSX.Element {
   }, []);
 
   // ─── Tap handler ──────────────────────────────
-  const tap = Gesture.Tap()
-    .onEnd((e) => {
+  const handleTap = useCallback(
+    (tapX: number, tapY: number) => {
       if (gameOverRef.current) return;
 
-      const tapX = e.x;
-      const tapY = e.y;
       const now = performance.now();
 
       // Find closest tappable cloud within hit radius
@@ -296,61 +286,28 @@ export default function CloudCatchScreen(): React.JSX.Element {
 
       if (closest) {
         closest.tapped = true;
-        // Breeze reaction
         setBreezeState(correct ? 'happy' : 'shake');
       }
-    });
+    },
+    [],
+  );
 
   // ─── Render ───────────────────────────────────
 
   if (showEndAnim) {
     return (
       <View style={styles.container}>
-        <Canvas style={StyleSheet.absoluteFill}>
-          {/* Sun reveal */}
-          <Circle
-            cx={width / 2}
-            cy={height * 0.3}
-            r={80}
-            color={Colors.goldenYellow}
-          />
-          {/* Sun glow */}
-          <Circle
-            cx={width / 2}
-            cy={height * 0.3}
-            r={100}
-            color="rgba(255,215,0,0.2)"
-          />
+        {/* Sky gradient effect */}
+        <View style={styles.skyGradient} />
 
-          {/* Sky gradient */}
-          <Rect x={0} y={0} width={width} height={height}>
-            <LinearGradient
-              start={vec(0, 0)}
-              end={vec(0, height)}
-              colors={['#87CEEB', '#E8F4FD']}
-            />
-          </Rect>
-
-          {/* Sun on top of gradient */}
-          <Circle
-            cx={width / 2}
-            cy={height * 0.3}
-            r={80}
-            color={Colors.goldenYellow}
-          />
-          <Circle
-            cx={width / 2}
-            cy={height * 0.3}
-            r={110}
-            color="rgba(255,215,0,0.15)"
-          />
-        </Canvas>
+        {/* Sun */}
+        <View style={[styles.sunGlow, { left: width / 2 - 110, top: height * 0.3 - 110 }]} />
+        <View style={[styles.sun, { left: width / 2 - 80, top: height * 0.3 - 80 }]} />
 
         {/* Stars earned */}
         {starsEarned && (
           <View style={styles.starsContainer}>
             <View style={styles.starRow}>
-              {/* Using View-based elements for the star display */}
               <View style={styles.starBadge}>
                 <View style={[styles.starInner, { backgroundColor: Colors.goldenYellow }]} />
               </View>
@@ -358,7 +315,7 @@ export default function CloudCatchScreen(): React.JSX.Element {
           </View>
         )}
 
-        {/* Breeze happy loop */}
+        {/* Breeze kite */}
         <View style={[styles.breezeContainer, { bottom: height * 0.15 }]}>
           <View style={styles.kiteBody}>
             <View style={[styles.kiteDiamond, { backgroundColor: Colors.sunsetOrange }]} />
@@ -369,157 +326,101 @@ export default function CloudCatchScreen(): React.JSX.Element {
   }
 
   return (
-    <View style={styles.container}>
-      <GestureDetector gesture={tap}>
-        <View style={StyleSheet.absoluteFill}>
-          <Canvas style={StyleSheet.absoluteFill}>
-            {/* Sky gradient background */}
-            <Rect x={0} y={0} width={width} height={height}>
-              <LinearGradient
-                start={vec(0, 0)}
-                end={vec(0, height)}
-                colors={['#5BA3C9', '#87CEEB', '#B8E2F8']}
-              />
-            </Rect>
+    <TouchableWithoutFeedback
+      onPress={(e) => handleTap(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+    >
+      <View style={styles.container}>
+        {/* Sky gradient background */}
+        <View style={styles.skyGradient} />
 
-            {/* Background decorative clouds (parallax - slow) */}
-            <Group opacity={0.3}>
-              <RoundedRect x={width * 0.1} y={60} width={120} height={50} r={25} color={Colors.cloudWhite} />
-              <RoundedRect x={width * 0.6} y={40} width={150} height={55} r={27} color={Colors.cloudWhite} />
-              <RoundedRect x={width * 0.85} y={100} width={100} height={40} r={20} color={Colors.cloudWhite} />
-            </Group>
+        {/* Background decorative clouds */}
+        <View style={[styles.bgCloud, { left: width * 0.1, top: 60, width: 120, height: 50, opacity: 0.3 }]} />
+        <View style={[styles.bgCloud, { left: width * 0.6, top: 40, width: 150, height: 55, opacity: 0.3 }]} />
+        <View style={[styles.bgCloud, { left: width * 0.85, top: 100, width: 100, height: 40, opacity: 0.3 }]} />
 
-            {/* Game clouds */}
-            {clouds.map((cloud) => {
-              if (cloud.type === 'golden') {
-                return (
-                  <Group key={cloud.id}>
-                    {/* Golden cloud - bright, fluffy, glowing edge */}
-                    <RoundedRect
-                      x={cloud.x - cloud.width / 2 - 4}
-                      y={cloud.y - cloud.height / 2 - 4}
-                      width={cloud.width + 8}
-                      height={cloud.height + 8}
-                      r={cloud.height / 2}
-                      color="rgba(255,215,0,0.25)"
-                    />
-                    <RoundedRect
-                      x={cloud.x - cloud.width / 2}
-                      y={cloud.y - cloud.height / 2}
-                      width={cloud.width}
-                      height={cloud.height}
-                      r={cloud.height / 2}
-                      color={Colors.goldenYellow}
-                    />
-                    {/* Cloud highlight */}
-                    <RoundedRect
-                      x={cloud.x - cloud.width / 2 + 8}
-                      y={cloud.y - cloud.height / 2 + 5}
-                      width={cloud.width * 0.5}
-                      height={cloud.height * 0.4}
-                      r={10}
-                      color="rgba(255,255,255,0.4)"
-                    />
-                  </Group>
-                );
-              }
+        {/* Game clouds */}
+        {clouds.map((cloud) => {
+          if (cloud.type === 'golden') {
+            return (
+              <View
+                key={cloud.id}
+                style={[
+                  styles.goldenCloud,
+                  {
+                    left: cloud.x - cloud.width / 2,
+                    top: cloud.y - cloud.height / 2,
+                    width: cloud.width,
+                    height: cloud.height,
+                    borderRadius: cloud.height / 2,
+                  },
+                ]}
+              >
+                <View style={styles.goldenHighlight} />
+              </View>
+            );
+          }
 
-              if (cloud.type === 'storm') {
-                return (
-                  <Group key={cloud.id}>
-                    {/* Storm cloud - dark grey, jagged */}
-                    <RoundedRect
-                      x={cloud.x - CLOUD_SIZE / 2}
-                      y={cloud.y - CLOUD_SIZE * 0.3}
-                      width={CLOUD_SIZE}
-                      height={CLOUD_SIZE * 0.6}
-                      r={CLOUD_SIZE * 0.2}
-                      color={Colors.stormGrey}
-                    />
-                    {/* Lightning bolt accent */}
-                    <Circle
-                      cx={cloud.x + 10}
-                      cy={cloud.y + CLOUD_SIZE * 0.2}
-                      r={4}
-                      color={Colors.goldenYellow}
-                      opacity={0.7}
-                    />
-                  </Group>
-                );
-              }
+          if (cloud.type === 'storm') {
+            return (
+              <View
+                key={cloud.id}
+                style={[
+                  styles.stormCloud,
+                  {
+                    left: cloud.x - CLOUD_SIZE / 2,
+                    top: cloud.y - CLOUD_SIZE * 0.3,
+                    width: CLOUD_SIZE,
+                    height: CLOUD_SIZE * 0.6,
+                    borderRadius: CLOUD_SIZE * 0.2,
+                  },
+                ]}
+              >
+                <View style={styles.lightning} />
+              </View>
+            );
+          }
 
-              // Distractor (bird/rainbow) - small neutral shape
-              return (
-                <Group key={cloud.id}>
-                  <Circle
-                    cx={cloud.x}
-                    cy={cloud.y}
-                    r={20}
-                    color={Colors.softPurple}
-                    opacity={0.6}
-                  />
-                  <Circle
-                    cx={cloud.x + 12}
-                    cy={cloud.y - 5}
-                    r={12}
-                    color={Colors.softPurple}
-                    opacity={0.5}
-                  />
-                </Group>
-              );
-            })}
-
-            {/* Breeze kite at bottom */}
-            <Group
-              transform={[
-                { translateX: width / 2 },
-                { translateY: height - 120 + kiteOffset + (breezeState === 'happy' ? -10 : breezeState === 'shake' ? 5 : 0) },
+          // Distractor
+          return (
+            <View
+              key={cloud.id}
+              style={[
+                styles.distractorCloud,
+                {
+                  left: cloud.x - 20,
+                  top: cloud.y - 20,
+                },
               ]}
-            >
-              {/* Kite body (diamond) */}
-              {(() => {
-                const path = Skia.Path.Make();
-                path.moveTo(0, -22);
-                path.lineTo(16, 0);
-                path.lineTo(0, 22);
-                path.lineTo(-16, 0);
-                path.close();
-                return <Path path={path} color={Colors.sunsetOrange} style="fill" />;
-              })()}
-              {/* Kite cross */}
-              {(() => {
-                const path = Skia.Path.Make();
-                path.moveTo(0, -22);
-                path.lineTo(0, 22);
-                path.moveTo(-16, 0);
-                path.lineTo(16, 0);
-                return <Path path={path} color={Colors.white} style="stroke" strokeWidth={1.5} />;
-              })()}
-              {/* Tail */}
-              {(() => {
-                const path = Skia.Path.Make();
-                path.moveTo(0, 22);
-                path.cubicTo(-8, 35, 8, 48, -4, 60);
-                return <Path path={path} color={Colors.sunsetOrange} style="stroke" strokeWidth={2} />;
-              })()}
-              {/* Tail bows */}
-              <Circle cx={-5} cy={38} r={3} color={Colors.grassGreen} />
-              <Circle cx={5} cy={50} r={3} color={Colors.goldenYellow} />
-            </Group>
-
-            {/* Timer bar at top */}
-            <Rect x={0} y={0} width={width} height={6} color="rgba(0,0,0,0.1)" />
-            <Rect
-              x={0}
-              y={0}
-              width={width * (timeLeft / GAME_DURATION_MS)}
-              height={6}
-              color={Colors.cloudWhite}
             />
-          </Canvas>
+          );
+        })}
+
+        {/* Breeze kite at bottom */}
+        <View
+          style={[
+            styles.kiteCharacter,
+            {
+              left: width / 2 - 20,
+              top: height - 120 + kiteOffset + (breezeState === 'happy' ? -10 : breezeState === 'shake' ? 5 : 0),
+            },
+          ]}
+        >
+          <View style={[styles.kiteDiamond, { backgroundColor: Colors.sunsetOrange }]} />
+          <View style={styles.kiteTailLine} />
+          <View style={[styles.kiteTailBow, { top: 38, left: -2, backgroundColor: Colors.grassGreen }]} />
+          <View style={[styles.kiteTailBow, { top: 50, left: 8, backgroundColor: Colors.goldenYellow }]} />
         </View>
-      </GestureDetector>
-    </View>
+
+        {/* Timer bar at top */}
+        <View style={styles.timerBg} />
+        <View
+          style={[
+            styles.timerBar,
+            { width: width * (timeLeft / GAME_DURATION_MS) },
+          ]}
+        />
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -527,6 +428,112 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.skyBlue,
+  },
+  skyGradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.skyBlue,
+  },
+  bgCloud: {
+    position: 'absolute',
+    backgroundColor: Colors.cloudWhite,
+    borderRadius: 25,
+  },
+  // Golden cloud
+  goldenCloud: {
+    position: 'absolute',
+    backgroundColor: Colors.goldenYellow,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  goldenHighlight: {
+    position: 'absolute',
+    top: 5,
+    left: 8,
+    width: '50%',
+    height: '40%',
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  // Storm cloud
+  stormCloud: {
+    position: 'absolute',
+    backgroundColor: Colors.stormGrey,
+  },
+  lightning: {
+    position: 'absolute',
+    bottom: -4,
+    right: CLOUD_SIZE * 0.3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.goldenYellow,
+    opacity: 0.7,
+  },
+  // Distractor
+  distractorCloud: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.softPurple,
+    opacity: 0.6,
+  },
+  // Kite character
+  kiteCharacter: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  kiteDiamond: {
+    width: 40,
+    height: 40,
+    borderRadius: 4,
+    transform: [{ rotate: '45deg' }],
+  },
+  kiteTailLine: {
+    width: 2,
+    height: 40,
+    backgroundColor: Colors.sunsetOrange,
+    marginTop: -6,
+  },
+  kiteTailBow: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  // Timer
+  timerBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 6,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  timerBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    height: 6,
+    backgroundColor: Colors.cloudWhite,
+  },
+  // End animation
+  sunGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,215,0,0.15)',
+  },
+  sun: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: Colors.goldenYellow,
   },
   starsContainer: {
     position: 'absolute',
@@ -562,11 +569,5 @@ const styles = StyleSheet.create({
   },
   kiteBody: {
     alignItems: 'center',
-  },
-  kiteDiamond: {
-    width: 40,
-    height: 40,
-    borderRadius: 4,
-    transform: [{ rotate: '45deg' }],
   },
 });

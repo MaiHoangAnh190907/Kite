@@ -1,23 +1,5 @@
-import { useEffect } from 'react';
-import { useWindowDimensions } from 'react-native';
-import {
-  Canvas,
-  Path,
-  Skia,
-  Group,
-  Circle,
-  Line,
-  vec,
-} from '@shopify/react-native-skia';
-import {
-  useSharedValue,
-  withTiming,
-  withSequence,
-  withDelay,
-  Easing,
-  runOnJS,
-  useDerivedValue,
-} from 'react-native-reanimated';
+import { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 
 const TRANSITION_DURATION_MS = 3000;
 
@@ -27,58 +9,38 @@ interface TransitionProps {
 
 export function Transition({ onComplete }: TransitionProps): React.JSX.Element {
   const { width, height } = useWindowDimensions();
-  const progress = useSharedValue(0);
+  const progress = useRef(new Animated.Value(0)).current;
 
-  // Kite position derived from progress (0 → 1 across screen)
-  const kiteX = useDerivedValue(() => {
-    return -80 + progress.value * (width + 160);
+  const kiteX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-80, width + 80],
   });
 
-  const kiteY = useDerivedValue(() => {
-    // Sine wave path as kite flies across
-    const centerY = height * 0.4;
-    const amplitude = height * 0.12;
-    return centerY + Math.sin(progress.value * Math.PI * 3) * amplitude;
+  const kiteY = progress.interpolate({
+    inputRange: [0, 0.17, 0.33, 0.5, 0.67, 0.83, 1],
+    outputRange: [
+      height * 0.4,
+      height * 0.4 - height * 0.12,
+      height * 0.4,
+      height * 0.4 + height * 0.12,
+      height * 0.4,
+      height * 0.4 - height * 0.12,
+      height * 0.4,
+    ],
   });
 
-  // Kite body path (diamond shape)
-  const kiteBodyPath = useDerivedValue(() => {
-    const x = kiteX.value;
-    const y = kiteY.value;
-    const path = Skia.Path.Make();
-    path.moveTo(x, y - 30);       // top
-    path.lineTo(x + 20, y);       // right
-    path.lineTo(x, y + 30);       // bottom
-    path.lineTo(x - 20, y);       // left
-    path.close();
-    return path;
-  });
-
-  // Tail control points
-  const tailPath = useDerivedValue(() => {
-    const x = kiteX.value;
-    const y = kiteY.value;
-    const path = Skia.Path.Make();
-    path.moveTo(x, y + 30);
-    const wave = Math.sin(progress.value * Math.PI * 8) * 15;
-    path.cubicTo(
-      x - 10 + wave, y + 50,
-      x + 10 - wave, y + 70,
-      x + wave, y + 90,
-    );
-    return path;
+  const sparkleOpacity = progress.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [0.2, 0.8, 0.2, 0.8, 0.2],
   });
 
   useEffect(() => {
-    progress.value = withSequence(
-      withDelay(
-        200,
-        withTiming(1, {
-          duration: TRANSITION_DURATION_MS - 400,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ),
-    );
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: TRANSITION_DURATION_MS - 400,
+      delay: 200,
+      useNativeDriver: true,
+    }).start();
 
     const timer = setTimeout(() => {
       onComplete();
@@ -87,32 +49,97 @@ export function Transition({ onComplete }: TransitionProps): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [onComplete, progress]);
 
-  // Sparkle positions along the trail
-  const sparkle1X = useDerivedValue(() => kiteX.value - 30);
-  const sparkle1Y = useDerivedValue(() => kiteY.value + 10);
-  const sparkle2X = useDerivedValue(() => kiteX.value - 60);
-  const sparkle2Y = useDerivedValue(() => kiteY.value + 5);
-  const sparkleOpacity = useDerivedValue(() => {
-    return Math.max(0, Math.sin(progress.value * Math.PI * 12) * 0.6 + 0.2);
-  });
-
   return (
-    <Canvas style={{ flex: 1, backgroundColor: '#87CEEB' }}>
+    <View style={styles.container}>
       {/* Background clouds */}
-      <Circle cx={width * 0.2} cy={height * 0.25} r={40} color="rgba(248,249,250,0.4)" />
-      <Circle cx={width * 0.6} cy={height * 0.15} r={50} color="rgba(248,249,250,0.3)" />
-      <Circle cx={width * 0.8} cy={height * 0.35} r={35} color="rgba(248,249,250,0.5)" />
+      <View style={[styles.bgCloud, { left: width * 0.2, top: height * 0.25, width: 80, height: 80 }]} />
+      <View style={[styles.bgCloud, { left: width * 0.6, top: height * 0.15, width: 100, height: 100, opacity: 0.3 }]} />
+      <View style={[styles.bgCloud, { left: width * 0.8, top: height * 0.35, width: 70, height: 70, opacity: 0.5 }]} />
 
       {/* Sparkle trail */}
-      <Circle cx={sparkle1X} cy={sparkle1Y} r={4} color="#FFD700" opacity={sparkleOpacity} />
-      <Circle cx={sparkle2X} cy={sparkle2Y} r={3} color="#FFD700" opacity={sparkleOpacity} />
+      <Animated.View
+        style={[
+          styles.sparkle,
+          {
+            opacity: sparkleOpacity,
+            transform: [
+              { translateX: Animated.subtract(kiteX, 40) },
+              { translateY: Animated.add(kiteY, 10) },
+            ],
+          },
+        ]}
+      />
 
-      {/* Kite body */}
-      <Path path={kiteBodyPath} color="#FF8C42" style="fill" />
-      <Path path={kiteBodyPath} color="#FFFFFF" style="stroke" strokeWidth={2} />
-
-      {/* Kite tail */}
-      <Path path={tailPath} color="#FF8C42" style="stroke" strokeWidth={3} />
-    </Canvas>
+      {/* Kite */}
+      <Animated.View
+        style={[
+          styles.kite,
+          {
+            transform: [{ translateX: kiteX }, { translateY: kiteY }],
+          },
+        ]}
+      >
+        <View style={styles.kiteDiamond} />
+        <View style={styles.kiteTail} />
+        <View style={styles.kiteBow1} />
+        <View style={styles.kiteBow2} />
+      </Animated.View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#87CEEB',
+  },
+  bgCloud: {
+    position: 'absolute',
+    borderRadius: 50,
+    backgroundColor: 'rgba(248,249,250,0.4)',
+  },
+  sparkle: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFD700',
+  },
+  kite: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  kiteDiamond: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#FF8C42',
+    borderRadius: 4,
+    transform: [{ rotate: '45deg' }],
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  kiteTail: {
+    width: 3,
+    height: 60,
+    backgroundColor: '#FF8C42',
+    marginTop: -4,
+  },
+  kiteBow1: {
+    position: 'absolute',
+    top: 50,
+    left: -5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
+  },
+  kiteBow2: {
+    position: 'absolute',
+    top: 65,
+    left: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFD700',
+  },
+});
