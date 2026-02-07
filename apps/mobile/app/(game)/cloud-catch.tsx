@@ -1,13 +1,15 @@
 import 'react-native-get-random-values';
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
+  PanResponder,
   useWindowDimensions,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import { router } from 'expo-router';
 import { v4 as uuid } from 'uuid';
+import * as Haptics from 'expo-haptics';
 
 import { useSessionStore } from '../../src/stores/session-store';
 import { Colors } from '../../src/constants/colors';
@@ -15,35 +17,35 @@ import { Colors } from '../../src/constants/colors';
 // ─── Constants ────────────────────────────────────────────────────────
 
 const GAME_DURATION_MS = 150_000; // 2.5 minutes
-const CLOUD_SIZE = 80;
-const CLOUD_HIT_RADIUS = 50;
+const CLOUD_SIZE = 70;
+const KITE_WIDTH = 60;
+const KITE_HEIGHT = 70;
+const KITE_Y_OFFSET = 130; // distance from bottom
+const HIT_TOLERANCE = 50; // how close cloud center must be to kite center
 
-// Difficulty tiers from spec
-const DIFFICULTY_TIERS = [
-  { startMs: 0,       speedMs: 3000, spawnIntervalMs: 2000, stormRatio: 0.25, distractors: false },
-  { startMs: 30_000,  speedMs: 2500, spawnIntervalMs: 1500, stormRatio: 0.25, distractors: true },
-  { startMs: 60_000,  speedMs: 2000, spawnIntervalMs: 1200, stormRatio: 0.30, distractors: true },
-  { startMs: 90_000,  speedMs: 1500, spawnIntervalMs: 1000, stormRatio: 0.30, distractors: true },
-  { startMs: 120_000, speedMs: 1500, spawnIntervalMs: 800,  stormRatio: 0.40, distractors: true },
-];
+const BASE_SPEED = 0.15; // px per ms — starting fall speed
+const SPEED_INCREMENT = 0.018; // added per consecutive golden catch
+const MAX_SPEED = 0.55;
+const SPAWN_INTERVAL_MS = 1400;
+const STORM_RATIO = 0.30;
 
-type CloudType = 'golden' | 'storm' | 'distractor';
+type CloudType = 'golden' | 'storm';
 
 interface Cloud {
   id: string;
   type: CloudType;
   x: number;
   y: number;
-  spawnY: number;
-  speed: number; // px per ms
+  speed: number;
   spawnTimestamp: number;
-  tapped: boolean;
+  caught: boolean;
   exited: boolean;
   width: number;
   height: number;
 }
 
-// Event types matching agent_docs/games.md
+// ─── Event types ──────────────────────────────────────────────────────
+
 interface StimulusEvent {
   type: 'stimulus';
   stimulusId: string;
@@ -53,13 +55,15 @@ interface StimulusEvent {
   speed: number;
 }
 
-interface TapEvent {
-  type: 'tap';
+interface CatchEvent {
+  type: 'catch';
   timestamp: number;
-  position: { x: number; y: number };
-  targetId: string | null;
+  stimulusId: string;
+  stimulusType: CloudType;
   correct: boolean;
-  reactionTimeMs: number;
+  combo: number;
+  score: number;
+  currentSpeed: number;
 }
 
 interface MissEvent {
@@ -69,30 +73,13 @@ interface MissEvent {
   timeOnScreen: number;
 }
 
-type GameEvent = StimulusEvent | TapEvent | MissEvent;
-
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-function getDifficulty(elapsedMs: number): (typeof DIFFICULTY_TIERS)[0] {
-  for (let i = DIFFICULTY_TIERS.length - 1; i >= 0; i--) {
-    if (elapsedMs >= DIFFICULTY_TIERS[i].startMs) {
-      return DIFFICULTY_TIERS[i];
-    }
-  }
-  return DIFFICULTY_TIERS[0];
-}
-
-function pickCloudType(difficulty: (typeof DIFFICULTY_TIERS)[0]): CloudType {
-  const roll = Math.random();
-  if (difficulty.distractors && roll < 0.10) return 'distractor';
-  if (roll < difficulty.stormRatio + (difficulty.distractors ? 0.10 : 0)) return 'storm';
-  return 'golden';
-}
+type GameEvent = StimulusEvent | CatchEvent | MissEvent;
 
 // ─── Cloud Catch Game ─────────────────────────────────────────────────
 
 export default function CloudCatchScreen(): React.JSX.Element {
   const { width, height } = useWindowDimensions();
+  const kiteY = height - KITE_Y_OFFSET;
 
   const recordEvents = useSessionStore((s) => s.recordEvents);
   const startGame = useSessionStore((s) => s.startGame);
@@ -100,57 +87,75 @@ export default function CloudCatchScreen(): React.JSX.Element {
 
   const cloudsRef = useRef<Cloud[]>([]);
   const eventsRef = useRef<GameEvent[]>([]);
-  const gameStartRef = useRef<number>(0);
-  const lastSpawnRef = useRef<number>(0);
-  const animFrameRef = useRef<number>(0);
+  const gameStartRef = useRef(0);
+  const lastSpawnRef = useRef(0);
+  const animFrameRef = useRef(0);
   const gameOverRef = useRef(false);
+  const kiteXRef = useRef(width / 2);
+  const comboRef = useRef(0);
+  const scoreRef = useRef(0);
+  const currentSpeedRef = useRef(BASE_SPEED);
 
-  // State for rendering (updated every frame)
   const [clouds, setClouds] = useState<Cloud[]>([]);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
+  const [kiteX, setKiteX] = useState(width / 2);
+  const [score, setScore] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [flash, setFlash] = useState<'gold' | 'red' | null>(null);
   const [showEndAnim, setShowEndAnim] = useState(false);
   const [starsEarned, setStarsEarned] = useState(false);
-  // Breeze reaction
-  const [breezeState, setBreezeState] = useState<'idle' | 'happy' | 'shake'>('idle');
 
-  // ─── Kite bobbing ─────────────────────────────
-  const [kiteOffset, setKiteOffset] = useState(0);
+  // ─── Drag kite left/right ───────────────────────
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gesture) => {
+        const newX = Math.max(
+          KITE_WIDTH / 2,
+          Math.min(width - KITE_WIDTH / 2, kiteXRef.current + gesture.dx),
+        );
+        kiteXRef.current = newX;
+        setKiteX(newX);
+      },
+      onPanResponderGrant: (e) => {
+        // Snap kite to touch position for responsive feel
+        const touchX = e.nativeEvent.pageX;
+        kiteXRef.current = Math.max(KITE_WIDTH / 2, Math.min(width - KITE_WIDTH / 2, touchX));
+        setKiteX(kiteXRef.current);
+      },
+    }),
+  ).current;
 
-  // ─── Spawn a cloud ────────────────────────────
-  const spawnCloud = useCallback(
-    (elapsed: number) => {
-      const diff = getDifficulty(elapsed);
-      const type = pickCloudType(diff);
-      const cloud: Cloud = {
-        id: uuid(),
-        type,
-        x: Math.random() * (width - CLOUD_SIZE * 2) + CLOUD_SIZE,
-        y: -CLOUD_SIZE,
-        spawnY: -CLOUD_SIZE,
-        speed: (height + CLOUD_SIZE * 2) / diff.speedMs, // px per ms
-        spawnTimestamp: performance.now(),
-        tapped: false,
-        exited: false,
-        width: CLOUD_SIZE + (type === 'golden' ? 10 : 0),
-        height: CLOUD_SIZE * 0.65,
-      };
+  // ─── Spawn ──────────────────────────────────────
+  const spawnCloud = () => {
+    const type: CloudType = Math.random() < STORM_RATIO ? 'storm' : 'golden';
+    const cloud: Cloud = {
+      id: uuid(),
+      type,
+      x: Math.random() * (width - CLOUD_SIZE * 2) + CLOUD_SIZE,
+      y: -CLOUD_SIZE,
+      speed: currentSpeedRef.current,
+      spawnTimestamp: performance.now(),
+      caught: false,
+      exited: false,
+      width: CLOUD_SIZE + (type === 'golden' ? 10 : 0),
+      height: CLOUD_SIZE * 0.6,
+    };
 
-      cloudsRef.current.push(cloud);
+    cloudsRef.current.push(cloud);
 
-      // Record stimulus event
-      eventsRef.current.push({
-        type: 'stimulus',
-        stimulusId: cloud.id,
-        stimulusType: cloud.type,
-        spawnTimestamp: cloud.spawnTimestamp,
-        spawnPosition: { x: cloud.x, y: cloud.y },
-        speed: cloud.speed,
-      });
-    },
-    [width, height],
-  );
+    eventsRef.current.push({
+      type: 'stimulus',
+      stimulusId: cloud.id,
+      stimulusType: cloud.type,
+      spawnTimestamp: cloud.spawnTimestamp,
+      spawnPosition: { x: cloud.x, y: cloud.y },
+      speed: cloud.speed,
+    });
+  };
 
-  // ─── Game loop ────────────────────────────────
+  // ─── Game loop ──────────────────────────────────
   useEffect(() => {
     startGame('cloud_catch');
     gameStartRef.current = performance.now();
@@ -163,13 +168,10 @@ export default function CloudCatchScreen(): React.JSX.Element {
       const elapsed = now - gameStartRef.current;
       const remaining = GAME_DURATION_MS - elapsed;
 
-      // Game over
       if (remaining <= 0) {
         gameOverRef.current = true;
-
-        // Record misses for untapped golden clouds still on screen
         for (const c of cloudsRef.current) {
-          if (c.type === 'golden' && !c.tapped && !c.exited) {
+          if (c.type === 'golden' && !c.caught && !c.exited) {
             eventsRef.current.push({
               type: 'miss',
               stimulusId: c.id,
@@ -178,39 +180,80 @@ export default function CloudCatchScreen(): React.JSX.Element {
             });
           }
         }
-
-        // Upload events to session store
         recordEvents('cloud_catch', eventsRef.current);
         endGame('cloud_catch');
         setShowEndAnim(true);
-
-        // Show end animation, then navigate
         setTimeout(() => setStarsEarned(true), 800);
-        setTimeout(() => {
-          router.replace('/(game)/transition');
-        }, 3500);
-
+        setTimeout(() => router.replace('/(game)/transition'), 3500);
         return;
       }
 
       setTimeLeft(remaining);
 
-      // Spawn logic
-      const diff = getDifficulty(elapsed);
-      if (now - lastSpawnRef.current >= diff.spawnIntervalMs) {
-        spawnCloud(elapsed);
+      // Spawn
+      if (now - lastSpawnRef.current >= SPAWN_INTERVAL_MS) {
+        spawnCloud();
         lastSpawnRef.current = now;
       }
 
-      // Update cloud positions
-      const dt = 16; // ~60fps
-      const updatedClouds: Cloud[] = [];
+      // Move clouds & check collisions
+      const dt = 16;
+      const alive: Cloud[] = [];
+      const kx = kiteXRef.current;
+
       for (const cloud of cloudsRef.current) {
-        if (cloud.tapped || cloud.exited) continue;
+        if (cloud.caught || cloud.exited) continue;
 
         cloud.y += cloud.speed * dt;
 
-        // Cloud exits screen
+        // Collision with kite
+        const dx = Math.abs(cloud.x - kx);
+        const dy = Math.abs(cloud.y - kiteY);
+
+        if (dx < HIT_TOLERANCE && dy < HIT_TOLERANCE) {
+          cloud.caught = true;
+
+          if (cloud.type === 'golden') {
+            // Good catch — combo + speed up
+            comboRef.current += 1;
+            const comboMultiplier = Math.min(comboRef.current, 10);
+            const points = 10 * comboMultiplier;
+            scoreRef.current += points;
+            currentSpeedRef.current = Math.min(
+              MAX_SPEED,
+              BASE_SPEED + SPEED_INCREMENT * comboRef.current,
+            );
+            setScore(scoreRef.current);
+            setCombo(comboRef.current);
+            setFlash('gold');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          } else {
+            // Storm hit — lose points, reset combo & speed
+            scoreRef.current = Math.max(0, scoreRef.current - 30);
+            comboRef.current = 0;
+            currentSpeedRef.current = BASE_SPEED;
+            setScore(scoreRef.current);
+            setCombo(0);
+            setFlash('red');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
+
+          eventsRef.current.push({
+            type: 'catch',
+            timestamp: now,
+            stimulusId: cloud.id,
+            stimulusType: cloud.type,
+            correct: cloud.type === 'golden',
+            combo: comboRef.current,
+            score: scoreRef.current,
+            currentSpeed: currentSpeedRef.current,
+          });
+
+          setTimeout(() => setFlash(null), 200);
+          continue;
+        }
+
+        // Exited bottom
         if (cloud.y > height + CLOUD_SIZE) {
           cloud.exited = true;
           if (cloud.type === 'golden') {
@@ -224,203 +267,119 @@ export default function CloudCatchScreen(): React.JSX.Element {
           continue;
         }
 
-        updatedClouds.push(cloud);
+        alive.push(cloud);
       }
 
-      cloudsRef.current = updatedClouds;
-      setClouds([...updatedClouds]);
-
-      // Kite bobbing
-      setKiteOffset(Math.sin(now / 600) * 8);
-
-      // Reset breeze state after reaction
-      if (breezeState !== 'idle') {
-        setTimeout(() => setBreezeState('idle'), 300);
-      }
-
+      cloudsRef.current = alive;
+      setClouds([...alive]);
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
     animFrameRef.current = requestAnimationFrame(loop);
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-    };
+    return () => cancelAnimationFrame(animFrameRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Tap handler ──────────────────────────────
-  const handleTap = useCallback(
-    (tapX: number, tapY: number) => {
-      if (gameOverRef.current) return;
-
-      const now = performance.now();
-
-      // Find closest tappable cloud within hit radius
-      let closest: Cloud | null = null;
-      let closestDist = Infinity;
-
-      for (const cloud of cloudsRef.current) {
-        if (cloud.tapped || cloud.exited) continue;
-        const dx = tapX - cloud.x;
-        const dy = tapY - cloud.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < CLOUD_HIT_RADIUS && dist < closestDist) {
-          closest = cloud;
-          closestDist = dist;
-        }
-      }
-
-      const targetId = closest?.id ?? null;
-      const correct = closest?.type === 'golden';
-      const reactionTimeMs = closest ? now - closest.spawnTimestamp : 0;
-
-      eventsRef.current.push({
-        type: 'tap',
-        timestamp: now,
-        position: { x: tapX, y: tapY },
-        targetId,
-        correct,
-        reactionTimeMs,
-      });
-
-      if (closest) {
-        closest.tapped = true;
-        setBreezeState(correct ? 'happy' : 'shake');
-      }
-    },
-    [],
-  );
-
-  // ─── Render ───────────────────────────────────
-
+  // ─── End animation ──────────────────────────────
   if (showEndAnim) {
     return (
       <View style={styles.container}>
-        {/* Sky gradient effect */}
         <View style={styles.skyGradient} />
-
-        {/* Sun */}
-        <View style={[styles.sunGlow, { left: width / 2 - 110, top: height * 0.3 - 110 }]} />
-        <View style={[styles.sun, { left: width / 2 - 80, top: height * 0.3 - 80 }]} />
-
-        {/* Stars earned */}
+        <View style={[styles.sunGlow, { left: width / 2 - 110, top: height * 0.25 - 110 }]} />
+        <View style={[styles.sun, { left: width / 2 - 80, top: height * 0.25 - 80 }]} />
+        <View style={styles.endScoreWrap}>
+          <Text style={styles.endScoreLabel}>Score</Text>
+          <Text style={styles.endScoreValue}>{score}</Text>
+        </View>
         {starsEarned && (
           <View style={styles.starsContainer}>
-            <View style={styles.starRow}>
-              <View style={styles.starBadge}>
-                <View style={[styles.starInner, { backgroundColor: Colors.goldenYellow }]} />
-              </View>
+            <View style={styles.starBadge}>
+              <View style={[styles.starInner, { backgroundColor: Colors.goldenYellow }]} />
             </View>
           </View>
         )}
-
-        {/* Breeze kite */}
-        <View style={[styles.breezeContainer, { bottom: height * 0.15 }]}>
-          <View style={styles.kiteBody}>
-            <View style={[styles.kiteDiamond, { backgroundColor: Colors.sunsetOrange }]} />
-          </View>
-        </View>
       </View>
     );
   }
 
+  // ─── Main game ──────────────────────────────────
   return (
-    <TouchableWithoutFeedback
-      onPress={(e) => handleTap(e.nativeEvent.locationX, e.nativeEvent.locationY)}
-    >
-      <View style={styles.container}>
-        {/* Sky gradient background */}
-        <View style={styles.skyGradient} />
+    <View style={styles.container} {...panResponder.panHandlers}>
+      <View style={styles.skyGradient} />
 
-        {/* Background decorative clouds */}
-        <View style={[styles.bgCloud, { left: width * 0.1, top: 60, width: 120, height: 50, opacity: 0.3 }]} />
-        <View style={[styles.bgCloud, { left: width * 0.6, top: 40, width: 150, height: 55, opacity: 0.3 }]} />
-        <View style={[styles.bgCloud, { left: width * 0.85, top: 100, width: 100, height: 40, opacity: 0.3 }]} />
+      {/* Decorative bg clouds */}
+      <View style={[styles.bgCloud, { left: width * 0.1, top: 50, width: 120, height: 45 }]} />
+      <View style={[styles.bgCloud, { left: width * 0.65, top: 30, width: 140, height: 50 }]} />
 
-        {/* Game clouds */}
-        {clouds.map((cloud) => {
-          if (cloud.type === 'golden') {
-            return (
-              <View
-                key={cloud.id}
-                style={[
-                  styles.goldenCloud,
-                  {
-                    left: cloud.x - cloud.width / 2,
-                    top: cloud.y - cloud.height / 2,
-                    width: cloud.width,
-                    height: cloud.height,
-                    borderRadius: cloud.height / 2,
-                  },
-                ]}
-              >
-                <View style={styles.goldenHighlight} />
-              </View>
-            );
-          }
+      {/* HUD */}
+      <View style={styles.hud}>
+        <View style={styles.hudItem}>
+          <Text style={styles.hudLabel}>Score</Text>
+          <Text style={styles.hudValue}>{score}</Text>
+        </View>
+        {combo > 1 && (
+          <View style={styles.hudItem}>
+            <Text style={styles.comboText}>x{combo}</Text>
+          </View>
+        )}
+      </View>
 
-          if (cloud.type === 'storm') {
-            return (
-              <View
-                key={cloud.id}
-                style={[
-                  styles.stormCloud,
-                  {
-                    left: cloud.x - CLOUD_SIZE / 2,
-                    top: cloud.y - CLOUD_SIZE * 0.3,
-                    width: CLOUD_SIZE,
-                    height: CLOUD_SIZE * 0.6,
-                    borderRadius: CLOUD_SIZE * 0.2,
-                  },
-                ]}
-              >
-                <View style={styles.lightning} />
-              </View>
-            );
-          }
-
-          // Distractor
-          return (
-            <View
-              key={cloud.id}
-              style={[
-                styles.distractorCloud,
-                {
-                  left: cloud.x - 20,
-                  top: cloud.y - 20,
-                },
-              ]}
-            />
-          );
-        })}
-
-        {/* Breeze kite at bottom */}
+      {/* Flash overlay */}
+      {flash && (
         <View
           style={[
-            styles.kiteCharacter,
+            styles.flash,
+            { backgroundColor: flash === 'gold' ? 'rgba(255,215,0,0.15)' : 'rgba(239,68,68,0.15)' },
+          ]}
+        />
+      )}
+
+      {/* Falling clouds */}
+      {clouds.map((cloud) => (
+        <View
+          key={cloud.id}
+          style={[
+            cloud.type === 'golden' ? styles.goldenCloud : styles.stormCloud,
             {
-              left: width / 2 - 20,
-              top: height - 120 + kiteOffset + (breezeState === 'happy' ? -10 : breezeState === 'shake' ? 5 : 0),
+              left: cloud.x - cloud.width / 2,
+              top: cloud.y - cloud.height / 2,
+              width: cloud.width,
+              height: cloud.height,
+              borderRadius: cloud.height / 2,
             },
           ]}
         >
-          <View style={[styles.kiteDiamond, { backgroundColor: Colors.sunsetOrange }]} />
-          <View style={styles.kiteTailLine} />
-          <View style={[styles.kiteTailBow, { top: 38, left: -2, backgroundColor: Colors.grassGreen }]} />
-          <View style={[styles.kiteTailBow, { top: 50, left: 8, backgroundColor: Colors.goldenYellow }]} />
+          {cloud.type === 'golden' && <View style={styles.goldenHighlight} />}
+          {cloud.type === 'storm' && <View style={styles.lightning} />}
         </View>
+      ))}
 
-        {/* Timer bar at top */}
-        <View style={styles.timerBg} />
+      {/* Kite (draggable) */}
+      <View style={[styles.kite, { left: kiteX - KITE_WIDTH / 2, top: kiteY - KITE_HEIGHT / 2 }]}>
+        <View style={styles.kiteDiamond} />
+        <View style={styles.kiteTailLine} />
+        <View style={[styles.kiteTailBow, { top: 42, left: 22, backgroundColor: Colors.grassGreen }]} />
+        <View style={[styles.kiteTailBow, { top: 54, left: 32, backgroundColor: Colors.goldenYellow }]} />
+      </View>
+
+      {/* Speed indicator */}
+      <View style={[styles.speedBar, { bottom: 20 }]}>
         <View
           style={[
-            styles.timerBar,
-            { width: width * (timeLeft / GAME_DURATION_MS) },
+            styles.speedFill,
+            {
+              width: `${((currentSpeedRef.current - BASE_SPEED) / (MAX_SPEED - BASE_SPEED)) * 100}%`,
+            },
           ]}
         />
+        <Text style={styles.speedLabel}>Speed</Text>
       </View>
-    </TouchableWithoutFeedback>
+
+      {/* Timer */}
+      <View style={styles.timerBg}>
+        <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
+      </View>
+    </View>
   );
 }
 
@@ -437,6 +396,46 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: Colors.cloudWhite,
     borderRadius: 25,
+    opacity: 0.25,
+  },
+  // HUD
+  hud: {
+    position: 'absolute',
+    top: 16,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    zIndex: 20,
+  },
+  hudItem: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  hudLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  hudValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.textDark,
+  },
+  comboText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.sunsetOrange,
+  },
+  // Flash overlay
+  flash: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 15,
   },
   // Golden cloud
   goldenCloud: {
@@ -444,65 +443,88 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.goldenYellow,
     shadowColor: '#FFD700',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
     elevation: 4,
+    zIndex: 5,
   },
   goldenHighlight: {
     position: 'absolute',
-    top: 5,
+    top: 4,
     left: 8,
-    width: '50%',
+    width: '45%',
     height: '40%',
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   // Storm cloud
   stormCloud: {
     position: 'absolute',
     backgroundColor: Colors.stormGrey,
+    zIndex: 5,
   },
   lightning: {
     position: 'absolute',
-    bottom: -4,
-    right: CLOUD_SIZE * 0.3,
+    bottom: -3,
+    right: '30%',
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: Colors.goldenYellow,
     opacity: 0.7,
   },
-  // Distractor
-  distractorCloud: {
+  // Kite
+  kite: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.softPurple,
-    opacity: 0.6,
-  },
-  // Kite character
-  kiteCharacter: {
-    position: 'absolute',
+    width: KITE_WIDTH,
+    height: KITE_HEIGHT,
     alignItems: 'center',
+    zIndex: 10,
   },
   kiteDiamond: {
-    width: 40,
-    height: 40,
-    borderRadius: 4,
+    width: 44,
+    height: 44,
+    backgroundColor: Colors.sunsetOrange,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.white,
     transform: [{ rotate: '45deg' }],
   },
   kiteTailLine: {
     width: 2,
-    height: 40,
+    height: 30,
     backgroundColor: Colors.sunsetOrange,
     marginTop: -6,
   },
   kiteTailBow: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  // Speed bar
+  speedBar: {
+    position: 'absolute',
+    left: 30,
+    right: 30,
+    height: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 5,
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  speedFill: {
+    height: '100%',
+    backgroundColor: Colors.sunsetOrange,
+    borderRadius: 5,
+  },
+  speedLabel: {
+    position: 'absolute',
+    alignSelf: 'center',
+    fontSize: 8,
+    fontWeight: '700',
+    color: Colors.white,
+    top: -1,
   },
   // Timer
   timerBg: {
@@ -510,17 +532,15 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 6,
+    height: 5,
     backgroundColor: 'rgba(0,0,0,0.1)',
+    zIndex: 20,
   },
   timerBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    height: 6,
+    height: 5,
     backgroundColor: Colors.cloudWhite,
   },
-  // End animation
+  // End
   sunGlow: {
     position: 'absolute',
     width: 220,
@@ -535,24 +555,33 @@ const styles = StyleSheet.create({
     borderRadius: 80,
     backgroundColor: Colors.goldenYellow,
   },
-  starsContainer: {
+  endScoreWrap: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
+    top: '40%',
+    alignSelf: 'center',
     alignItems: 'center',
   },
-  starRow: {
-    flexDirection: 'row',
-    gap: 20,
+  endScoreLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.white,
+    opacity: 0.8,
+  },
+  endScoreValue: {
+    fontSize: 64,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  starsContainer: {
+    position: 'absolute',
+    bottom: '20%',
+    alignSelf: 'center',
   },
   starBadge: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(255,215,0,0.2)',
+    backgroundColor: 'rgba(255,215,0,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -560,14 +589,5 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-  },
-  breezeContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  kiteBody: {
-    alignItems: 'center',
   },
 });
