@@ -4,6 +4,18 @@
 > Children play mini-games on clinic iPads. Games passively measure cognitive, motor,
 > and emotional development. Doctors see longitudinal patterns on a web dashboard.
 
+## Current State
+**Last Updated:** 2026-02-07
+**Working On:** Integration — Tracks A and C can now pull and start
+**Recently Completed:** Track B (all phases: Foundation, API Endpoints, Metrics Pipeline, Tests)
+**Blocked By:** None
+
+### Track B Progress
+- [x] Phase 0: Foundation (monorepo, DB, auth, shared types)
+- [x] Phase B1: All API endpoints (patients, sessions, admin, metrics, flags)
+- [x] Phase B2: Metrics pipeline (4 calculators, normative, flags)
+- [x] Phase B3: Unit tests (29 passing), typecheck clean
+
 ## Quick Reference
 
 | Doc | Location |
