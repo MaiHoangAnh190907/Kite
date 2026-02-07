@@ -1,11 +1,34 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build outputs
 dist/
-.env
-.env.local
-.env.*.local
-.turbo/
 .expo/
 *.tsbuildinfo
 coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Turbo
+.turbo/
+
+# Secrets
+*.pem
+*.key
+
+# Logs
 *.log

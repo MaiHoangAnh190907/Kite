@@ -1,0 +1,264 @@
+import { useState, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  ActivityIndicator,
+} from 'react-native';
+import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
+
+import { Colors } from '../../src/constants/colors';
+import { tabletVerify } from '../../src/services/api';
+import { useAuthStore } from '../../src/stores/auth-store';
+
+const MAX_PIN_LENGTH = 6;
+const MIN_PIN_LENGTH = 4;
+
+export default function LoginScreen(): React.JSX.Element {
+  const [pin, setPin] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const setAuth = useAuthStore((s) => s.setAuth);
+
+  const triggerShake = useCallback(() => {
+    setError(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 15, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -15, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start(() => {
+      setTimeout(() => {
+        setPin('');
+        setError(false);
+      }, 300);
+    });
+  }, [shakeAnim]);
+
+  const handleSubmit = useCallback(async (currentPin: string) => {
+    if (currentPin.length < MIN_PIN_LENGTH) return;
+    setLoading(true);
+    try {
+      const result = await tabletVerify(currentPin);
+      await SecureStore.setItemAsync('tablet_jwt', result.accessToken);
+      setAuth(result.accessToken, result.staffName, result.clinicName);
+      router.replace('/(staff)/select-patient');
+    } catch {
+      triggerShake();
+    } finally {
+      setLoading(false);
+    }
+  }, [setAuth, triggerShake]);
+
+  const handleKeyPress = useCallback((key: string) => {
+    if (loading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (key === 'delete') {
+      setPin((prev) => prev.slice(0, -1));
+      setError(false);
+      return;
+    }
+
+    if (key === 'submit') {
+      handleSubmit(pin);
+      return;
+    }
+
+    setPin((prev) => {
+      if (prev.length >= MAX_PIN_LENGTH) return prev;
+      const next = prev + key;
+      if (next.length === MAX_PIN_LENGTH) {
+        setTimeout(() => handleSubmit(next), 100);
+      }
+      return next;
+    });
+  }, [loading, pin, handleSubmit]);
+
+  const keys = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['delete', '0', 'submit'],
+  ];
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.content}>
+        {/* Logo area */}
+        <View style={styles.logoArea}>
+          <Text style={styles.logoIcon}>🪁</Text>
+          <Text style={styles.title}>Kite</Text>
+          <Text style={styles.subtitle}>Staff PIN</Text>
+        </View>
+
+        {/* PIN dots */}
+        <Animated.View
+          style={[styles.dotsContainer, { transform: [{ translateX: shakeAnim }] }]}
+        >
+          {Array.from({ length: MAX_PIN_LENGTH }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                i < pin.length && styles.dotFilled,
+                error && i < pin.length && styles.dotError,
+              ]}
+            />
+          ))}
+        </Animated.View>
+
+        {error && (
+          <Text style={styles.errorText}>Invalid PIN</Text>
+        )}
+
+        {/* Keypad */}
+        <View style={styles.keypad}>
+          {keys.map((row, rowIdx) => (
+            <View key={rowIdx} style={styles.keyRow}>
+              {row.map((key) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[
+                    styles.key,
+                    key === 'delete' && styles.keySpecial,
+                    key === 'submit' && styles.keySubmit,
+                    key === 'submit' && pin.length < MIN_PIN_LENGTH && styles.keyDisabled,
+                  ]}
+                  onPress={() => handleKeyPress(key)}
+                  disabled={loading || (key === 'submit' && pin.length < MIN_PIN_LENGTH)}
+                  activeOpacity={0.7}
+                >
+                  {key === 'delete' ? (
+                    <Text style={styles.keySpecialText}>⌫</Text>
+                  ) : key === 'submit' ? (
+                    loading ? (
+                      <ActivityIndicator color={Colors.white} />
+                    ) : (
+                      <Text style={styles.keySubmitText}>→</Text>
+                    )
+                  ) : (
+                    <Text style={styles.keyText}>{key}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.skyBlue,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    alignItems: 'center',
+    width: 360,
+  },
+  logoArea: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoIcon: {
+    fontSize: 64,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 2,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: Colors.cloudWhite,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+    height: 24,
+    alignItems: 'center',
+  },
+  dot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    backgroundColor: 'transparent',
+  },
+  dotFilled: {
+    backgroundColor: Colors.white,
+  },
+  dotError: {
+    backgroundColor: Colors.errorRed,
+    borderColor: Colors.errorRed,
+  },
+  errorText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  keypad: {
+    marginTop: 16,
+    gap: 12,
+  },
+  keyRow: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  key: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  keySpecial: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  keySubmit: {
+    backgroundColor: Colors.sunsetOrange,
+  },
+  keyDisabled: {
+    opacity: 0.4,
+  },
+  keyText: {
+    fontSize: 32,
+    fontWeight: '500',
+    color: Colors.white,
+  },
+  keySpecialText: {
+    fontSize: 28,
+    color: Colors.white,
+  },
+  keySubmitText: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+});

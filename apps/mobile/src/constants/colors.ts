@@ -1,0 +1,16 @@
+export const Colors = {
+  skyBlue: '#87CEEB',
+  skyBlueDark: '#5BA3C9',
+  skyBlueLight: '#B8E2F8',
+  sunsetOrange: '#FF8C42',
+  cloudWhite: '#F8F9FA',
+  grassGreen: '#4CAF50',
+  stormGrey: '#78909C',
+  goldenYellow: '#FFD700',
+  softPurple: '#B39DDB',
+  white: '#FFFFFF',
+  textDark: '#1F2937',
+  textMuted: '#6B7280',
+  errorRed: '#EF4444',
+  background: '#E8F4FD',
+} as const;
