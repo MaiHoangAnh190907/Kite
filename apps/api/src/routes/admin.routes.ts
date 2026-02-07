@@ -143,6 +143,7 @@ adminRouter.get('/tablets', async (req, res, next) => {
         model: t.model ?? null,
         lastSeenAt: t.last_seen_at ? new Date(t.last_seen_at as string).toISOString() : null,
         isActive: t.is_active,
+        registeredAt: t.registered_at ? new Date(t.registered_at as string).toISOString() : null,
       })),
     });
   } catch (err) {

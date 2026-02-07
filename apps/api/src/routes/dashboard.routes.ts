@@ -250,21 +250,46 @@ dashboardRouter.get(
 
       const flags = await query.orderBy('created_at', 'desc');
 
-      res.json({
-        flags: flags.map((f: Record<string, unknown>) => ({
-          id: f.id,
-          severity: f.severity,
-          flagType: f.flag_type,
-          metricName: f.metric_name,
-          gameType: f.game_type,
-          description: f.description,
-          currentValue: f.current_value != null ? Number(f.current_value) : null,
-          thresholdPercentile: f.threshold_value != null ? Number(f.threshold_value) : null,
-          actualPercentile: null,
-          createdAt: f.created_at,
-          isDismissed: f.is_dismissed,
-        })),
-      });
+      // Look up actual percentiles from patient_metrics for each flag
+      const flagsWithPercentiles = await Promise.all(
+        flags.map(async (f: Record<string, unknown>) => {
+          let actualPercentile: number | null = null;
+
+          // Find the latest percentile for this metric+game from patient_metrics
+          const latestMetric = await db('patient_metrics')
+            .where({
+              patient_id: patientId,
+              metric_name: f.metric_name as string,
+              game_type: f.game_type as string,
+            })
+            .whereNotNull('percentile')
+            .orderBy('recorded_at', 'desc')
+            .first();
+
+          if (latestMetric) {
+            actualPercentile = Number(latestMetric.percentile);
+          }
+
+          return {
+            id: f.id,
+            severity: f.severity,
+            flagType: f.flag_type,
+            metricName: f.metric_name,
+            gameType: f.game_type,
+            description: f.description,
+            currentValue: f.current_value != null ? Number(f.current_value) : null,
+            thresholdPercentile: f.threshold_value != null ? Number(f.threshold_value) : null,
+            actualPercentile,
+            createdAt: f.created_at,
+            isDismissed: f.is_dismissed,
+            dismissedBy: f.dismissed_by ?? null,
+            dismissedAt: f.dismissed_at ? new Date(f.dismissed_at as string).toISOString() : null,
+            dismissReason: f.dismiss_reason ?? null,
+          };
+        }),
+      );
+
+      res.json({ flags: flagsWithPercentiles });
     } catch (err) {
       next(err);
     }

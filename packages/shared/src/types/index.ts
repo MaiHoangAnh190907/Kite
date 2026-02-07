@@ -242,6 +242,9 @@ export interface Flag {
   actualPercentile: number | null;
   createdAt: string;
   isDismissed: boolean;
+  dismissedBy: string | null;
+  dismissedAt: string | null;
+  dismissReason: string | null;
 }
 
 export interface DismissFlagRequest {
@@ -272,6 +275,7 @@ export interface TabletInfo {
   model: string | null;
   lastSeenAt: string | null;
   isActive: boolean;
+  registeredAt: string | null;
 }
 
 export interface CreateTabletRequest {

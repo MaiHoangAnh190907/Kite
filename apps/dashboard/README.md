@@ -1,3 +1,5 @@
 # Kite Dashboard
 
-This app is built by Track C. See `AGENTS-track-c-dashboard.md`.
+React + TypeScript + Vite web dashboard for the Kite platform.
+
+See `agent_docs/dashboard.md` for the UI specification.
