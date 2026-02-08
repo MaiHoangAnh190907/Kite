@@ -47,7 +47,7 @@ export interface CompleteSessionResponse {
   metricsComputed: boolean;
 }
 
-export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_balance' | 'wind_trails';
+export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_balance' | 'wind_trails' | 'breeze_spells';
 
 export interface GameEvent {
   type: string;

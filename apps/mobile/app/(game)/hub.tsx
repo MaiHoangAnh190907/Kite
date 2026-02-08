@@ -16,6 +16,7 @@ const GAMES: { key: GameType; label: string; icon: string; color: string }[] = [
   { key: 'cloud_catch', label: 'Cloud Catch', icon: '☁️', color: Colors.goldenYellow },
   { key: 'star_sequence', label: 'Color Sequence', icon: '🎨', color: '#6C63FF' },
   { key: 'sky_balance', label: 'Sky Balance', icon: '⚖️', color: Colors.softPurple },
+  { key: 'breeze_spells', label: 'Breeze Spells', icon: '🌀', color: '#7B68C7' },
 ];
 
 export default function GameHubScreen(): React.JSX.Element {
@@ -31,6 +32,7 @@ export default function GameHubScreen(): React.JSX.Element {
       star_sequence: '/(game)/star-sequence',
       sky_balance: '/(game)/sky-balance',
       wind_trails: '/(game)/wind-trails',
+      breeze_spells: '/(game)/breeze-spells',
     };
     router.replace(routes[game] as `/${string}`);
   };
