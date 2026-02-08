@@ -8,29 +8,36 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
-import { v4 as uuid } from 'uuid';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../../src/constants/colors';
 import { useSessionStore } from '../../src/stores/session-store';
 
 const GAME_DURATION_MS = 150_000;
-const GRID_SIZE = 3; // 3x3 grid of stars
 const INITIAL_SEQ_LEN = 2;
 const MAX_SEQ_LEN = 7;
-const SHOW_INTERVAL_MS = 600;
+const GRID_EXPAND_THRESHOLD = 5; // expand to 4x4 at sequence length 5+
+const CONSECUTIVE_FAILS_TO_END = 2;
+
+// Timing per spec table
+function getShowIntervalMs(seqLen: number): number {
+  if (seqLen <= 2) return 800;
+  if (seqLen <= 4) return 700;
+  if (seqLen <= 5) return 600;
+  return 500;
+}
 
 type Phase = 'showing' | 'input' | 'feedback' | 'done';
 
 interface RoundEvent {
   type: 'round';
-  roundIndex: number;
+  roundNumber: number;
   sequenceLength: number;
-  sequence: number[];
-  playerInput: number[];
+  sequenceShown: number[];
+  sequenceTapped: number[];
   correct: boolean;
-  reactionTimesMs: number[];
-  timestamp: number;
+  tapTimestamps: number[];
+  interTapIntervals: number[];
 }
 
 export default function StarSequenceScreen(): React.JSX.Element {
@@ -50,24 +57,43 @@ export default function StarSequenceScreen(): React.JSX.Element {
   const [seqLen, setSeqLen] = useState(INITIAL_SEQ_LEN);
   const [roundIdx, setRoundIdx] = useState(0);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
-  const [score, setScore] = useState(0);
-  const inputTimesRef = useRef<number[]>([]);
-  const lastTapRef = useRef(0);
   const [showEndAnim, setShowEndAnim] = useState(false);
+  const gameOverRef = useRef(false);
 
-  const generateSequence = useCallback((len: number) => {
+  // Track consecutive failures at current max for early end
+  const maxReachedRef = useRef(INITIAL_SEQ_LEN);
+  const consecutiveFailsRef = useRef(0);
+
+  const tapTimestampsRef = useRef<number[]>([]);
+
+  // Grid size: 3x3 normally, 4x4 at sequence length 5+
+  const gridSize = seqLen >= GRID_EXPAND_THRESHOLD ? 4 : 3;
+  const totalCells = gridSize * gridSize;
+
+  const generateSequence = useCallback((len: number, cells: number) => {
     const seq: number[] = [];
     for (let i = 0; i < len; i++) {
-      seq.push(Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE)));
+      seq.push(Math.floor(Math.random() * cells));
     }
     return seq;
   }, []);
+
+  const finishGame = useCallback(() => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    recordEvents('star_sequence', eventsRef.current);
+    endGame('star_sequence');
+    setPhase('done');
+    setShowEndAnim(true);
+    setTimeout(() => router.replace('/(game)/transition'), 3000);
+  }, [recordEvents, endGame]);
 
   // Start game
   useEffect(() => {
     startGame('star_sequence');
     gameStartRef.current = performance.now();
-    const seq = generateSequence(INITIAL_SEQ_LEN);
+    const gs = INITIAL_SEQ_LEN >= GRID_EXPAND_THRESHOLD ? 4 : 3;
+    const seq = generateSequence(INITIAL_SEQ_LEN, gs * gs);
     setSequence(seq);
     setShowIdx(0);
     setPhase('showing');
@@ -81,11 +107,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
       const remaining = GAME_DURATION_MS - elapsed;
       if (remaining <= 0) {
         clearInterval(interval);
-        setPhase('done');
-        recordEvents('star_sequence', eventsRef.current);
-        endGame('star_sequence');
-        setShowEndAnim(true);
-        setTimeout(() => router.replace('/(game)/transition'), 3000);
+        finishGame();
         return;
       }
       setTimeLeft(remaining);
@@ -98,55 +120,69 @@ export default function StarSequenceScreen(): React.JSX.Element {
   useEffect(() => {
     if (phase !== 'showing' || showIdx < 0) return;
     if (showIdx >= sequence.length) {
-      // Done showing, switch to input
+      // Done showing → switch to input
       setTimeout(() => {
         setShowIdx(-1);
         setPhase('input');
         setPlayerInput([]);
-        inputTimesRef.current = [];
-        lastTapRef.current = performance.now();
+        tapTimestampsRef.current = [];
       }, 400);
       return;
     }
-    const timer = setTimeout(() => setShowIdx(showIdx + 1), SHOW_INTERVAL_MS);
+    const timer = setTimeout(() => setShowIdx(showIdx + 1), getShowIntervalMs(seqLen));
     return () => clearTimeout(timer);
-  }, [phase, showIdx, sequence]);
+  }, [phase, showIdx, sequence, seqLen]);
 
   // Handle star tap
   const handleTap = useCallback((idx: number) => {
-    if (phase !== 'input') return;
+    if (phase !== 'input' || gameOverRef.current) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const now = performance.now();
-    inputTimesRef.current.push(now - lastTapRef.current);
-    lastTapRef.current = now;
+    tapTimestampsRef.current.push(now);
 
     const newInput = [...playerInput, idx];
     setPlayerInput(newInput);
 
-    // Check each step
     const stepIdx = newInput.length - 1;
+
     if (newInput[stepIdx] !== sequence[stepIdx]) {
-      // Wrong
+      // Wrong — gentle blue glow (NOT red per spec)
       setPhase('feedback');
       setFeedback('wrong');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+      const timestamps = tapTimestampsRef.current;
+      const intervals: number[] = [];
+      for (let i = 1; i < timestamps.length; i++) {
+        intervals.push(timestamps[i] - timestamps[i - 1]);
+      }
 
       eventsRef.current.push({
         type: 'round',
-        roundIndex: roundIdx,
+        roundNumber: roundIdx,
         sequenceLength: seqLen,
-        sequence,
-        playerInput: newInput,
+        sequenceShown: sequence,
+        sequenceTapped: newInput,
         correct: false,
-        reactionTimesMs: inputTimesRef.current,
-        timestamp: performance.now(),
+        tapTimestamps: timestamps,
+        interTapIntervals: intervals,
       });
 
-      // Reset to same length
+      // Track consecutive failures at max
+      if (seqLen >= maxReachedRef.current) {
+        consecutiveFailsRef.current += 1;
+        if (consecutiveFailsRef.current >= CONSECUTIVE_FAILS_TO_END) {
+          setTimeout(() => finishGame(), 800);
+          return;
+        }
+      }
+
+      // Reset round with same length
       setTimeout(() => {
         setFeedback(null);
-        const nextSeq = generateSequence(seqLen);
+        const gs = seqLen >= GRID_EXPAND_THRESHOLD ? 4 : 3;
+        const nextSeq = generateSequence(seqLen, gs * gs);
         setSequence(nextSeq);
         setShowIdx(0);
         setPhase('showing');
@@ -159,48 +195,56 @@ export default function StarSequenceScreen(): React.JSX.Element {
     if (newInput.length === sequence.length) {
       setPhase('feedback');
       setFeedback('correct');
-      setScore((s) => s + 1);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      const timestamps = tapTimestampsRef.current;
+      const intervals: number[] = [];
+      for (let i = 1; i < timestamps.length; i++) {
+        intervals.push(timestamps[i] - timestamps[i - 1]);
+      }
 
       eventsRef.current.push({
         type: 'round',
-        roundIndex: roundIdx,
+        roundNumber: roundIdx,
         sequenceLength: seqLen,
-        sequence,
-        playerInput: newInput,
+        sequenceShown: sequence,
+        sequenceTapped: newInput,
         correct: true,
-        reactionTimesMs: inputTimesRef.current,
-        timestamp: performance.now(),
+        tapTimestamps: timestamps,
+        interTapIntervals: intervals,
       });
+
+      // Reset consecutive fails on success
+      consecutiveFailsRef.current = 0;
 
       // Increase difficulty
       setTimeout(() => {
         setFeedback(null);
         const nextLen = Math.min(seqLen + 1, MAX_SEQ_LEN);
+        maxReachedRef.current = Math.max(maxReachedRef.current, nextLen);
         setSeqLen(nextLen);
-        const nextSeq = generateSequence(nextLen);
+        const gs = nextLen >= GRID_EXPAND_THRESHOLD ? 4 : 3;
+        const nextSeq = generateSequence(nextLen, gs * gs);
         setSequence(nextSeq);
         setShowIdx(0);
         setPhase('showing');
         setRoundIdx((r) => r + 1);
       }, 1000);
     }
-  }, [phase, playerInput, sequence, seqLen, roundIdx, generateSequence]);
+  }, [phase, playerInput, sequence, seqLen, roundIdx, generateSequence, finishGame]);
 
   if (showEndAnim) {
     return (
       <View style={styles.container}>
         <View style={styles.endWrap}>
           <Text style={styles.endStar}>⭐</Text>
-          <View style={styles.starBadge}>
-            <View style={[styles.starInner, { backgroundColor: Colors.goldenYellow }]} />
-          </View>
+          <Text style={styles.endText}>✨</Text>
         </View>
       </View>
     );
   }
 
-  const cellSize = Math.min((width - 120) / GRID_SIZE, (height * 0.5) / GRID_SIZE);
+  const cellSize = Math.min((width - 120) / gridSize, (height * 0.5) / gridSize);
 
   return (
     <View style={styles.container}>
@@ -209,19 +253,21 @@ export default function StarSequenceScreen(): React.JSX.Element {
         <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
       </View>
 
-      {/* Phase indicator */}
+      {/* Phase indicator — icons only, minimal text */}
       <View style={styles.phaseWrap}>
-        <Text style={styles.phaseText}>
-          {phase === 'showing' ? 'Watch the stars...' : phase === 'input' ? 'Your turn!' : phase === 'feedback' ? (feedback === 'correct' ? 'Great!' : 'Try again!') : ''}
-        </Text>
+        {phase === 'showing' && <Text style={styles.phaseIcon}>👀</Text>}
+        {phase === 'input' && <Text style={styles.phaseIcon}>👆</Text>}
+        {phase === 'feedback' && feedback === 'correct' && <Text style={styles.phaseIcon}>✨</Text>}
+        {phase === 'feedback' && feedback === 'wrong' && <Text style={styles.phaseIcon}>💫</Text>}
       </View>
 
       {/* Star grid */}
-      <View style={styles.gridWrap}>
-        {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, i) => {
+      <View style={[styles.gridWrap, { maxWidth: cellSize * gridSize + (gridSize - 1) * 16 }]}>
+        {Array.from({ length: totalCells }).map((_, i) => {
           const isLit = phase === 'showing' && showIdx >= 0 && showIdx < sequence.length && sequence[showIdx] === i;
           const isPlayerTapped = phase === 'input' && playerInput.includes(i);
           const isFeedbackCorrect = phase === 'feedback' && feedback === 'correct' && sequence.includes(i);
+          // Spec: incorrect tap → gentle BLUE glow, not red
           const isFeedbackWrong = phase === 'feedback' && feedback === 'wrong' && playerInput[playerInput.length - 1] === i;
 
           return (
@@ -237,23 +283,18 @@ export default function StarSequenceScreen(): React.JSX.Element {
                 isLit && styles.cellLit,
                 isPlayerTapped && styles.cellTapped,
                 isFeedbackCorrect && styles.cellCorrect,
-                isFeedbackWrong && styles.cellWrong,
+                isFeedbackWrong && styles.cellWrongBlue, // Blue glow per spec
               ]}
               onPress={() => handleTap(i)}
               activeOpacity={0.7}
               disabled={phase !== 'input'}
             >
-              <Text style={[styles.starIcon, isLit && styles.starIconLit]}>
+              <Text style={[styles.starIcon, (isLit || isFeedbackCorrect) && styles.starIconLit]}>
                 {isLit || isFeedbackCorrect ? '⭐' : '✦'}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </View>
-
-      {/* Score */}
-      <View style={styles.scoreWrap}>
-        <Text style={styles.scoreText}>Sequence: {seqLen}</Text>
       </View>
     </View>
   );
@@ -262,7 +303,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#1a1a2e', // Dark purple night sky
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -280,18 +321,17 @@ const styles = StyleSheet.create({
   },
   phaseWrap: {
     marginBottom: 24,
+    height: 48,
+    justifyContent: 'center',
   },
-  phaseText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.white,
+  phaseIcon: {
+    fontSize: 36,
   },
   gridWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 16,
-    maxWidth: 400,
   },
   cell: {
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -312,9 +352,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(76,175,80,0.35)',
     borderColor: Colors.grassGreen,
   },
-  cellWrong: {
-    backgroundColor: 'rgba(239,68,68,0.35)',
-    borderColor: Colors.errorRed,
+  // Spec: incorrect tap → gentle BLUE glow (not red)
+  cellWrongBlue: {
+    backgroundColor: 'rgba(135,206,235,0.3)',
+    borderColor: Colors.skyBlue,
   },
   starIcon: {
     fontSize: 32,
@@ -323,33 +364,15 @@ const styles = StyleSheet.create({
   starIconLit: {
     fontSize: 40,
   },
-  scoreWrap: {
-    marginTop: 24,
-  },
-  scoreText: {
-    fontSize: 18,
-    color: Colors.cloudWhite,
-    fontWeight: '600',
-  },
   endWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   endStar: {
     fontSize: 100,
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  starBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,215,0,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  starInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  endText: {
+    fontSize: 48,
   },
 });

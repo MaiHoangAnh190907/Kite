@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { GameType, PatientListItem } from '../types';
 import { uploadEvents, completeSession } from '../services/api';
+import { queueUpload, queueCompletion, startBackgroundRetry } from '../services/upload-queue';
 
 interface GameTiming {
   startedAt: string;
@@ -128,15 +129,59 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     set({ isUploading: true, uploadError: null });
 
+    const games = state.gameOrder.slice(0, state.currentGameIndex + 1);
+    const totalDurationMs = state.sessionStartedAt
+      ? Date.now() - new Date(state.sessionStartedAt).getTime()
+      : 0;
+
     try {
       // Upload events for each completed game
-      const games = state.gameOrder.slice(0, state.currentGameIndex + 1);
       for (const game of games) {
         const events = state.eventsByGame[game];
         const timing = state.gameTimings[game];
         if (!events?.length || !timing) continue;
 
-        await uploadEvents(
+        try {
+          await uploadEvents(
+            state.sessionId,
+            game,
+            events,
+            timing.startedAt,
+            timing.completedAt ?? new Date().toISOString(),
+            timing.durationMs,
+          );
+        } catch {
+          // Queue for retry — never lose session data
+          await queueUpload(
+            state.sessionId,
+            game,
+            events,
+            timing.startedAt,
+            timing.completedAt ?? new Date().toISOString(),
+            timing.durationMs,
+          );
+        }
+      }
+
+      // Mark session complete
+      try {
+        await completeSession(
+          state.sessionId,
+          games.length,
+          totalDurationMs,
+        );
+      } catch {
+        await queueCompletion(state.sessionId, games.length, totalDurationMs);
+      }
+
+      set({ isUploading: false });
+    } catch (err) {
+      // Queue everything if something went wrong
+      for (const game of games) {
+        const events = state.eventsByGame[game];
+        const timing = state.gameTimings[game];
+        if (!events?.length || !timing) continue;
+        await queueUpload(
           state.sessionId,
           game,
           events,
@@ -145,20 +190,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           timing.durationMs,
         );
       }
+      await queueCompletion(state.sessionId, games.length, totalDurationMs);
+      startBackgroundRetry();
 
-      // Mark session complete
-      const totalDurationMs = state.sessionStartedAt
-        ? Date.now() - new Date(state.sessionStartedAt).getTime()
-        : 0;
-
-      await completeSession(
-        state.sessionId,
-        games.length,
-        totalDurationMs,
-      );
-
-      set({ isUploading: false });
-    } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       set({ isUploading: false, uploadError: message });
     }

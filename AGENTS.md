@@ -6,9 +6,15 @@
 
 ## Current State
 **Last Updated:** 2026-02-07
-**Working On:** Phase C4 (Polish) / Integration testing
-**Recently Completed:** Track C — all admin pages (Staff, Tablets, Import, Analytics)
+**Working On:** Integration testing across tracks
+**Recently Completed:** Track A — all phases (app shell, games, kiosk, polish)
 **Blocked By:** None
+
+### Track A Progress
+- [x] Phase A1: App Shell (PIN login, patient selection, consent, navigation, mock API)
+- [x] Phase A2: Game Engine + Cloud Catch (tap mechanic, difficulty ramp, distractors, data collection)
+- [x] Phase A3: Remaining Games (Star Sequence, Wind Trails, Sky Sort, celebration, full session flow)
+- [x] Phase A4: Kiosk Mode & Polish (inactivity timeout, upload retry queue, sync indicator)
 
 ### Track B Progress
 - [x] Phase 0: Foundation (monorepo, DB, auth, shared types)

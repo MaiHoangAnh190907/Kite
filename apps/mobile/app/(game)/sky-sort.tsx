@@ -4,8 +4,9 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  PanResponder,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import { router } from 'expo-router';
 import { v4 as uuid } from 'uuid';
@@ -16,27 +17,60 @@ import { useSessionStore } from '../../src/stores/session-store';
 
 const GAME_DURATION_MS = 150_000;
 
-type Category = 'sky' | 'ground';
-type SortRule = 'type' | 'color';
+type SortRule = 'type' | 'color' | 'size';
+type ObjectType = 'bird' | 'butterfly' | 'airplane' | 'kite';
+type ObjectColor = 'blue' | 'grey' | 'orange' | 'red';
+type ObjectSize = 'small' | 'large';
 
-interface SortItem {
+// ─── Rule progression per spec ────────────────────────────────────────
+// 0-50s: type, 50-55s: switch, 55-100s: color, 100-105s: switch, 105-150s: size
+function getCurrentRule(elapsedMs: number): { rule: SortRule; transitioning: boolean } {
+  if (elapsedMs < 50_000) return { rule: 'type', transitioning: false };
+  if (elapsedMs < 55_000) return { rule: 'type', transitioning: true };
+  if (elapsedMs < 100_000) return { rule: 'color', transitioning: false };
+  if (elapsedMs < 105_000) return { rule: 'color', transitioning: true };
+  return { rule: 'size', transitioning: false };
+}
+
+// Spawn rate per spec
+function getSpawnIntervalMs(elapsedMs: number): number {
+  if (elapsedMs < 50_000) return 2500;
+  if (elapsedMs < 100_000) return 2000;
+  return 1500;
+}
+
+function getFallDurationMs(elapsedMs: number): number {
+  if (elapsedMs < 50_000) return 3000;
+  if (elapsedMs < 100_000) return 2500;
+  return 2000;
+}
+
+interface SortObject {
   id: string;
+  objectType: ObjectType;
+  objectColor: ObjectColor;
+  objectSize: ObjectSize;
   emoji: string;
-  label: string;
-  category: Category;
-  color: 'blue' | 'green' | 'yellow' | 'red';
+  x: number;
+  y: number;
+  speedPxPerMs: number;
+  spawnTimestamp: number;
+  sorted: boolean;
+  exited: boolean;
 }
 
 interface SortEvent {
   type: 'sort';
-  itemId: string;
-  itemLabel: string;
-  chosenBucket: string;
-  correctBucket: string;
+  objectId: string;
+  objectType: ObjectType;
+  objectColor: ObjectColor;
+  objectSize: ObjectSize;
+  currentRule: SortRule;
+  spawnTimestamp: number;
+  sortTimestamp: number;
+  direction: 'left' | 'right';
   correct: boolean;
-  rule: SortRule;
   reactionTimeMs: number;
-  timestamp: number;
 }
 
 interface RuleSwitchEvent {
@@ -44,213 +78,331 @@ interface RuleSwitchEvent {
   fromRule: SortRule;
   toRule: SortRule;
   timestamp: number;
+  firstSortAfterSwitch: {
+    reactionTimeMs: number;
+    correct: boolean;
+  } | null;
 }
 
-const SKY_ITEMS: SortItem[] = [
-  { id: '1', emoji: '☁️', label: 'Cloud', category: 'sky', color: 'blue' },
-  { id: '2', emoji: '⭐', label: 'Star', category: 'sky', color: 'yellow' },
-  { id: '3', emoji: '🌙', label: 'Moon', category: 'sky', color: 'yellow' },
-  { id: '4', emoji: '☀️', label: 'Sun', category: 'sky', color: 'red' },
-  { id: '5', emoji: '🪁', label: 'Kite', category: 'sky', color: 'blue' },
+type GameEvent = SortEvent | RuleSwitchEvent;
+
+// ─── Object templates per spec ────────────────────────────────────────
+// Birds (blue), Butterflies (orange), Airplanes (grey), Kites (red)
+const OBJECT_TEMPLATES: { type: ObjectType; emoji: string; color: ObjectColor }[] = [
+  { type: 'bird', emoji: '🐦', color: 'blue' },
+  { type: 'butterfly', emoji: '🦋', color: 'orange' },
+  { type: 'airplane', emoji: '✈️', color: 'grey' },
+  { type: 'kite', emoji: '🪁', color: 'red' },
 ];
 
-const GROUND_ITEMS: SortItem[] = [
-  { id: '6', emoji: '🌺', label: 'Flower', category: 'ground', color: 'red' },
-  { id: '7', emoji: '🌳', label: 'Tree', category: 'ground', color: 'green' },
-  { id: '8', emoji: '🍎', label: 'Apple', category: 'ground', color: 'red' },
-  { id: '9', emoji: '🐛', label: 'Bug', category: 'ground', color: 'green' },
-  { id: '10', emoji: '🪨', label: 'Rock', category: 'ground', color: 'blue' },
-];
-
-const ALL_ITEMS = [...SKY_ITEMS, ...GROUND_ITEMS];
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function randomObject(): Omit<SortObject, 'id' | 'x' | 'y' | 'speedPxPerMs' | 'spawnTimestamp' | 'sorted' | 'exited'> {
+  const template = OBJECT_TEMPLATES[Math.floor(Math.random() * OBJECT_TEMPLATES.length)];
+  const size: ObjectSize = Math.random() < 0.5 ? 'small' : 'large';
+  return {
+    objectType: template.type,
+    objectColor: template.color,
+    objectSize: size,
+    emoji: template.emoji,
+  };
 }
+
+// Determine correct basket per rule
+function getCorrectDirection(obj: SortObject, rule: SortRule): 'left' | 'right' {
+  switch (rule) {
+    case 'type':
+      // Birds + Butterflies (nature) = left, Airplanes + Kites (flying things) = right
+      return (obj.objectType === 'bird' || obj.objectType === 'butterfly') ? 'left' : 'right';
+    case 'color':
+      // Blue + Grey (cool) = left, Orange + Red (warm) = right
+      return (obj.objectColor === 'blue' || obj.objectColor === 'grey') ? 'left' : 'right';
+    case 'size':
+      // Small = left, Large = right
+      return obj.objectSize === 'small' ? 'left' : 'right';
+  }
+}
+
+// Rule labels (icon-based)
+function getRuleLabels(rule: SortRule): { left: string; right: string; ruleIcon: string } {
+  switch (rule) {
+    case 'type':
+      return { left: '🐦🦋', right: '✈️🪁', ruleIcon: '🏷️' };
+    case 'color':
+      return { left: '💙🩶', right: '🧡❤️', ruleIcon: '🎨' };
+    case 'size':
+      return { left: '🔹', right: '🔷', ruleIcon: '📏' };
+  }
+}
+
+const SWIPE_THRESHOLD = 50;
 
 export default function SkySortScreen(): React.JSX.Element {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const recordEvents = useSessionStore((s) => s.recordEvents);
   const startGame = useSessionStore((s) => s.startGame);
   const endGame = useSessionStore((s) => s.endGame);
 
-  const eventsRef = useRef<(SortEvent | RuleSwitchEvent)[]>([]);
+  const eventsRef = useRef<GameEvent[]>([]);
+  const objectsRef = useRef<SortObject[]>([]);
   const gameStartRef = useRef(0);
-  const itemShownRef = useRef(0);
-  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
-  const [currentItem, setCurrentItem] = useState<SortItem | null>(null);
-  const [rule, setRule] = useState<SortRule>('type');
-  const [sortCount, setSortCount] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
-  const [showEndAnim, setShowEndAnim] = useState(false);
+  const lastSpawnRef = useRef(0);
+  const animFrameRef = useRef(0);
   const gameOverRef = useRef(false);
+  const lastRuleRef = useRef<SortRule>('type');
+  const ruleSwitchRecordedRef = useRef<Set<string>>(new Set());
+  const firstSortAfterSwitchRef = useRef<{ rule: SortRule; pending: boolean }>({ rule: 'type', pending: false });
 
-  const nextItem = useCallback(() => {
-    const item = pickRandom(ALL_ITEMS);
-    setCurrentItem(item);
-    itemShownRef.current = performance.now();
-    setFeedback(null);
-  }, []);
+  const [objects, setObjects] = useState<SortObject[]>([]);
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
+  const [rule, setRule] = useState<SortRule>('type');
+  const [transitioning, setTransitioning] = useState(false);
+  const [streak, setStreak] = useState(0);
+  const [showEndAnim, setShowEndAnim] = useState(false);
 
+  // Swipe gesture for current falling object
+  const [activeObj, setActiveObj] = useState<SortObject | null>(null);
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+
+  const handleSort = useCallback((obj: SortObject, direction: 'left' | 'right') => {
+    if (obj.sorted || gameOverRef.current) return;
+    obj.sorted = true;
+
+    const correctDir = getCorrectDirection(obj, rule);
+    const correct = direction === correctDir;
+    const reactionTimeMs = performance.now() - obj.spawnTimestamp;
+
+    eventsRef.current.push({
+      type: 'sort',
+      objectId: obj.id,
+      objectType: obj.objectType,
+      objectColor: obj.objectColor,
+      objectSize: obj.objectSize,
+      currentRule: rule,
+      spawnTimestamp: obj.spawnTimestamp,
+      sortTimestamp: performance.now(),
+      direction,
+      correct,
+      reactionTimeMs,
+    });
+
+    // Track first sort after rule switch
+    if (firstSortAfterSwitchRef.current.pending) {
+      const switchKey = `${firstSortAfterSwitchRef.current.rule}`;
+      const switchEvents = eventsRef.current.filter(
+        (e): e is RuleSwitchEvent => e.type === 'rule_switch'
+      );
+      const lastSwitch = switchEvents[switchEvents.length - 1];
+      if (lastSwitch && lastSwitch.firstSortAfterSwitch === null) {
+        lastSwitch.firstSortAfterSwitch = { reactionTimeMs, correct };
+      }
+      firstSortAfterSwitchRef.current.pending = false;
+    }
+
+    if (correct) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setStreak((s) => s + 1);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setStreak(0);
+    }
+
+    setActiveObj(null);
+  }, [rule]);
+
+  // Pan responder for swiping
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 10,
+      onPanResponderMove: (_, gs) => {
+        swipeAnim.setValue(gs.dx);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (Math.abs(gs.dx) >= SWIPE_THRESHOLD) {
+          const direction: 'left' | 'right' = gs.dx < 0 ? 'left' : 'right';
+          // Sort the frontmost unsorted falling object
+          const frontObj = objectsRef.current.find((o) => !o.sorted && !o.exited);
+          if (frontObj) {
+            handleSort(frontObj, direction);
+          }
+        }
+        Animated.spring(swipeAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
+
+  // Spawn objects
+  const spawnObject = useCallback(() => {
+    const template = randomObject();
+    const obj: SortObject = {
+      id: uuid(),
+      ...template,
+      x: width / 2 + (Math.random() - 0.5) * width * 0.3,
+      y: -80,
+      speedPxPerMs: 0,
+      spawnTimestamp: performance.now(),
+      sorted: false,
+      exited: false,
+    };
+    objectsRef.current.push(obj);
+  }, [width]);
+
+  // ─── Game loop ──────────────────────────────────
   useEffect(() => {
     startGame('sky_sort');
     gameStartRef.current = performance.now();
-    nextItem();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    lastSpawnRef.current = performance.now();
 
-  // Timer + rule switches
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const elapsed = performance.now() - gameStartRef.current;
+    let lastFrameTime = performance.now();
+
+    const loop = () => {
+      if (gameOverRef.current) return;
+
+      const now = performance.now();
+      const elapsed = now - gameStartRef.current;
       const remaining = GAME_DURATION_MS - elapsed;
-      if (remaining <= 0 && !gameOverRef.current) {
+      const dt = now - lastFrameTime;
+      lastFrameTime = now;
+
+      if (remaining <= 0) {
         gameOverRef.current = true;
-        clearInterval(interval);
         recordEvents('sky_sort', eventsRef.current);
         endGame('sky_sort');
         setShowEndAnim(true);
         setTimeout(() => router.replace('/(game)/transition'), 3000);
         return;
       }
+
       setTimeLeft(remaining);
-    }, 200);
-    return () => clearInterval(interval);
+
+      // Rule progression
+      const ruleState = getCurrentRule(elapsed);
+      if (ruleState.rule !== lastRuleRef.current && !ruleSwitchRecordedRef.current.has(`${lastRuleRef.current}->${ruleState.rule}`)) {
+        ruleSwitchRecordedRef.current.add(`${lastRuleRef.current}->${ruleState.rule}`);
+        eventsRef.current.push({
+          type: 'rule_switch',
+          fromRule: lastRuleRef.current,
+          toRule: ruleState.rule,
+          timestamp: now,
+          firstSortAfterSwitch: null,
+        });
+        firstSortAfterSwitchRef.current = { rule: ruleState.rule, pending: true };
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+      lastRuleRef.current = ruleState.rule;
+      setRule(ruleState.rule);
+      setTransitioning(ruleState.transitioning);
+
+      // Spawn
+      const spawnInterval = getSpawnIntervalMs(elapsed);
+      if (now - lastSpawnRef.current >= spawnInterval && !ruleState.transitioning) {
+        spawnObject();
+        lastSpawnRef.current = now;
+      }
+
+      // Move objects down
+      const fallDuration = getFallDurationMs(elapsed);
+      const fallSpeed = height / fallDuration;
+      const alive: SortObject[] = [];
+
+      for (const obj of objectsRef.current) {
+        if (obj.sorted || obj.exited) continue;
+        obj.y += fallSpeed * dt;
+        obj.speedPxPerMs = fallSpeed;
+
+        if (obj.y > height + 100) {
+          obj.exited = true;
+          continue;
+        }
+        alive.push(obj);
+      }
+
+      objectsRef.current = alive;
+      setObjects([...alive]);
+
+      animFrameRef.current = requestAnimationFrame(loop);
+    };
+
+    animFrameRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animFrameRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Switch rule every 8 sorts
-  useEffect(() => {
-    if (sortCount > 0 && sortCount % 8 === 0) {
-      const newRule: SortRule = rule === 'type' ? 'color' : 'type';
-      eventsRef.current.push({
-        type: 'rule_switch',
-        fromRule: rule,
-        toRule: newRule,
-        timestamp: performance.now(),
-      });
-      setRule(newRule);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortCount]);
-
-  const handleSort = useCallback((bucket: string) => {
-    if (!currentItem || feedback || gameOverRef.current) return;
-
-    const reactionTimeMs = performance.now() - itemShownRef.current;
-
-    let correctBucket: string;
-    if (rule === 'type') {
-      correctBucket = currentItem.category;
-    } else {
-      // Color rule: blue/green → left, yellow/red → right
-      correctBucket = (currentItem.color === 'blue' || currentItem.color === 'green') ? 'cool' : 'warm';
-    }
-
-    const correct = bucket === correctBucket;
-
-    eventsRef.current.push({
-      type: 'sort',
-      itemId: currentItem.id,
-      itemLabel: currentItem.label,
-      chosenBucket: bucket,
-      correctBucket,
-      correct,
-      rule,
-      reactionTimeMs,
-      timestamp: performance.now(),
-    });
-
-    if (correct) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setStreak((s) => s + 1);
-      setFeedback('correct');
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setStreak(0);
-      setFeedback('wrong');
-    }
-
-    setSortCount((c) => c + 1);
-    setTimeout(() => nextItem(), 800);
-  }, [currentItem, feedback, rule, nextItem]);
 
   if (showEndAnim) {
     return (
       <View style={styles.container}>
         <View style={styles.endWrap}>
           <Text style={styles.endIcon}>🎈</Text>
-          <View style={styles.starBadge}>
-            <View style={[styles.starInner, { backgroundColor: Colors.sunsetOrange }]} />
-          </View>
+          <Text style={styles.endText}>✨</Text>
         </View>
       </View>
     );
   }
 
-  const buckets = rule === 'type'
-    ? [
-        { key: 'sky', label: 'Sky', icon: '☁️', color: Colors.skyBlue },
-        { key: 'ground', label: 'Ground', icon: '🌿', color: Colors.grassGreen },
-      ]
-    : [
-        { key: 'cool', label: 'Cool', icon: '💙', color: '#5BA3C9' },
-        { key: 'warm', label: 'Warm', icon: '❤️', color: Colors.sunsetOrange },
-      ];
+  const labels = getRuleLabels(rule);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       {/* Timer */}
       <View style={styles.timerBg}>
         <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
       </View>
 
-      {/* Rule indicator */}
-      <View style={styles.ruleWrap}>
-        <Text style={styles.ruleText}>
-          Sort by: {rule === 'type' ? 'Where it belongs' : 'Color'}
-        </Text>
+      {/* Rule indicator at top */}
+      <View style={[styles.ruleWrap, transitioning && styles.ruleTransitioning]}>
+        <View style={styles.ruleRow}>
+          <Text style={styles.ruleEmoji}>{labels.ruleIcon}</Text>
+          <View style={styles.ruleArrow}>
+            <Text style={styles.ruleLabel}>{labels.left}</Text>
+            <Text style={styles.ruleArrowText}>⬅️  ➡️</Text>
+            <Text style={styles.ruleLabel}>{labels.right}</Text>
+          </View>
+        </View>
         {streak >= 3 && <Text style={styles.streakText}>🔥 {streak}</Text>}
       </View>
 
-      {/* Current item */}
-      <View style={styles.itemWrap}>
-        {currentItem && (
-          <>
-            <Text style={[
-              styles.itemEmoji,
-              feedback === 'correct' && { transform: [{ scale: 1.2 }] },
-              feedback === 'wrong' && { opacity: 0.5 },
-            ]}>
-              {currentItem.emoji}
-            </Text>
-          </>
-        )}
-      </View>
-
-      {/* Feedback */}
-      {feedback && (
-        <Text style={[styles.feedbackText, feedback === 'correct' ? styles.feedbackCorrect : styles.feedbackWrong]}>
-          {feedback === 'correct' ? 'Yes!' : 'Oops!'}
-        </Text>
+      {/* Transitioning overlay */}
+      {transitioning && (
+        <View style={styles.transitionOverlay}>
+          <Text style={styles.transitionText}>✨</Text>
+        </View>
       )}
 
-      {/* Buckets */}
-      <View style={styles.bucketsRow}>
-        {buckets.map((b) => (
-          <TouchableOpacity
-            key={b.key}
-            style={[styles.bucket, { borderColor: b.color }]}
-            onPress={() => handleSort(b.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.bucketIcon}>{b.icon}</Text>
-            <Text style={styles.bucketLabel}>{b.label}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* Falling objects */}
+      {objects.map((obj) => (
+        <Animated.View
+          key={obj.id}
+          style={[
+            styles.fallingObject,
+            {
+              left: obj.x - (obj.objectSize === 'large' ? 50 : 35),
+              top: obj.y - (obj.objectSize === 'large' ? 50 : 35),
+              width: obj.objectSize === 'large' ? 100 : 70,
+              height: obj.objectSize === 'large' ? 100 : 70,
+              transform: [{ translateX: swipeAnim }],
+            },
+          ]}
+        >
+          <Text style={{ fontSize: obj.objectSize === 'large' ? 56 : 40 }}>
+            {obj.emoji}
+          </Text>
+        </Animated.View>
+      ))}
+
+      {/* Baskets at bottom */}
+      <View style={styles.basketRow}>
+        <View style={[styles.basket, { borderColor: Colors.skyBlue }]}>
+          <Text style={styles.basketIcon}>{labels.left}</Text>
+        </View>
+        <View style={styles.swipeHint}>
+          <Text style={styles.swipeHintText}>⬅️ swipe ➡️</Text>
+        </View>
+        <View style={[styles.basket, { borderColor: Colors.sunsetOrange }]}>
+          <Text style={styles.basketIcon}>{labels.right}</Text>
+        </View>
       </View>
     </View>
   );
@@ -260,8 +412,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   timerBg: {
     position: 'absolute',
@@ -278,46 +428,77 @@ const styles = StyleSheet.create({
   },
   ruleWrap: {
     position: 'absolute',
-    top: 30,
+    top: 20,
+    alignSelf: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 10,
   },
-  ruleText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.textDark,
+  ruleTransitioning: {
+    backgroundColor: 'rgba(255,215,0,0.3)',
+    borderWidth: 2,
+    borderColor: Colors.goldenYellow,
+  },
+  ruleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  ruleEmoji: {
+    fontSize: 24,
+  },
+  ruleArrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ruleLabel: {
+    fontSize: 20,
+  },
+  ruleArrowText: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
   streakText: {
-    fontSize: 18,
+    fontSize: 16,
     marginTop: 4,
     color: Colors.sunsetOrange,
     fontWeight: '700',
   },
-  itemWrap: {
-    marginBottom: 40,
+  transitionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    zIndex: 5,
   },
-  itemEmoji: {
-    fontSize: 100,
+  transitionText: {
+    fontSize: 64,
   },
-  feedbackText: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 20,
+  fallingObject: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 8,
   },
-  feedbackCorrect: {
-    color: Colors.grassGreen,
-  },
-  feedbackWrong: {
-    color: Colors.errorRed,
-  },
-  bucketsRow: {
+  basketRow: {
+    position: 'absolute',
+    bottom: 40,
+    left: 40,
+    right: 40,
     flexDirection: 'row',
-    gap: 24,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
   },
-  bucket: {
-    width: 140,
-    height: 140,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 28,
+  basket: {
+    width: 120,
+    height: 100,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 24,
     borderWidth: 4,
     justifyContent: 'center',
     alignItems: 'center',
@@ -327,14 +508,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  bucketIcon: {
-    fontSize: 40,
-    marginBottom: 8,
+  basketIcon: {
+    fontSize: 28,
   },
-  bucketLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.textDark,
+  swipeHint: {
+    alignItems: 'center',
+  },
+  swipeHintText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    opacity: 0.6,
   },
   endWrap: {
     flex: 1,
@@ -343,19 +526,9 @@ const styles = StyleSheet.create({
   },
   endIcon: {
     fontSize: 100,
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  starBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,140,66,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  starInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  endText: {
+    fontSize: 48,
   },
 });

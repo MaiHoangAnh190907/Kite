@@ -22,9 +22,9 @@ export default function TransitionScreen(): React.JSX.Element {
 
   const handleComplete = useCallback(async () => {
     if (isLastGame()) {
-      // All games done — upload and go to celebration
+      // All games done — upload and go to celebration screen
       await uploadSessionData();
-      router.replace('/(end)/complete');
+      router.replace('/(game)/celebration');
       return;
     }
 
@@ -35,9 +35,9 @@ export default function TransitionScreen(): React.JSX.Element {
     if (nextGame && GAME_ROUTES[nextGame]) {
       router.replace(GAME_ROUTES[nextGame] as `/${string}`);
     } else {
-      // Fallback: go to end
+      // Fallback: go to celebration
       await uploadSessionData();
-      router.replace('/(end)/complete');
+      router.replace('/(game)/celebration');
     }
   }, [advanceGame, isLastGame, gameOrder, currentGameIndex, uploadSessionData]);
 

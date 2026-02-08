@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Colors } from '../../src/constants/colors';
 import { tabletVerify } from '../../src/services/api';
 import { useAuthStore } from '../../src/stores/auth-store';
+import { getPendingCount, flushQueue, startBackgroundRetry } from '../../src/services/upload-queue';
 
 const MAX_PIN_LENGTH = 6;
 const MIN_PIN_LENGTH = 4;
@@ -22,8 +23,27 @@ export default function LoginScreen(): React.JSX.Element {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [pendingSyncs, setPendingSyncs] = useState(0);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  // Check for pending uploads and try to flush them
+  useEffect(() => {
+    const checkQueue = async () => {
+      const count = await getPendingCount();
+      setPendingSyncs(count);
+      if (count > 0) {
+        startBackgroundRetry();
+        // Also try an immediate flush
+        await flushQueue();
+        const newCount = await getPendingCount();
+        setPendingSyncs(newCount);
+      }
+    };
+    checkQueue();
+    const interval = setInterval(checkQueue, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const triggerShake = useCallback(() => {
     setError(true);
@@ -117,6 +137,16 @@ export default function LoginScreen(): React.JSX.Element {
 
         {error && (
           <Text style={styles.errorText}>Invalid PIN</Text>
+        )}
+
+        {/* Pending sync indicator */}
+        {pendingSyncs > 0 && (
+          <View style={styles.syncBadge}>
+            <View style={styles.syncDot} />
+            <Text style={styles.syncText}>
+              {pendingSyncs} session{pendingSyncs > 1 ? 's' : ''} pending sync
+            </Text>
+          </View>
         )}
 
         {/* Keypad */}
@@ -260,5 +290,26 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: Colors.white,
+  },
+  syncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 140, 66, 0.25)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  syncDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.sunsetOrange,
+  },
+  syncText: {
+    fontSize: 13,
+    color: Colors.white,
+    fontWeight: '500',
   },
 });
