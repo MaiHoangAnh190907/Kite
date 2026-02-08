@@ -99,66 +99,59 @@ export async function seed(knex: Knex): Promise<void> {
     });
   }
 
-  // Historical sessions
-  // Patrick & Anh: 3 sessions, Matheus & My: 5 sessions (for trend data)
-  const sessionDates = ['2025-08-15', '2025-10-20', '2025-12-10', '2026-01-15', '2026-02-05'];
+  // One session per patient, dated today
+  const sessionDate = new Date().toISOString().slice(0, 10);
   const gameTypes = ['cloud_catch', 'star_sequence', 'sky_balance', 'breeze_spells'] as const;
 
   for (const patient of patients) {
-    const numSessions = patient.firstName === 'Matheus' || patient.firstName === 'My' ? 5 : 3;
-    const dates = sessionDates.slice(0, numSessions);
+    const age = ageMonthsAt(patient.dob, sessionDate);
+    const sessionId = `bbbb${patient.id!.slice(4, 8)}-0001-0000-0000-000000000000`;
 
-    for (let si = 0; si < dates.length; si++) {
-      const sessionDate = dates[si]!;
-      const age = ageMonthsAt(patient.dob, sessionDate);
-      const sessionId = `bbbb${patient.id!.slice(4, 8)}-${String(si + 1).padStart(4, '0')}-0000-0000-000000000000`;
+    await knex('sessions').insert({
+      id: sessionId,
+      patient_id: patient.id,
+      clinic_id: CLINIC_ID,
+      tablet_id: TABLET_ID,
+      staff_user_id: STAFF_ID,
+      consent_given_at: `${sessionDate}T14:00:00Z`,
+      started_at: `${sessionDate}T14:01:00Z`,
+      completed_at: `${sessionDate}T14:12:00Z`,
+      status: 'completed',
+      patient_age_months: age,
+      games_completed: 4,
+      total_duration_ms: 660000,
+    });
 
-      await knex('sessions').insert({
-        id: sessionId,
-        patient_id: patient.id,
-        clinic_id: CLINIC_ID,
-        tablet_id: TABLET_ID,
-        staff_user_id: STAFF_ID,
-        consent_given_at: `${sessionDate}T14:00:00Z`,
+    // Game results with realistic computed metrics
+    for (let gi = 0; gi < gameTypes.length; gi++) {
+      const gameType = gameTypes[gi]!;
+      const gameId = `cccc${patient.id!.slice(4, 8)}-0001-${String(gi + 1).padStart(4, '0')}-0000-000000000000`;
+      const metrics = generateRealisticMetrics(gameType, age, 0, patient.firstName);
+
+      await knex('game_results').insert({
+        id: gameId,
+        session_id: sessionId,
+        game_type: gameType,
         started_at: `${sessionDate}T14:01:00Z`,
-        completed_at: `${sessionDate}T14:12:00Z`,
-        status: 'completed',
-        patient_age_months: age,
-        games_completed: 4,
-        total_duration_ms: 660000,
+        completed_at: `${sessionDate}T14:03:30Z`,
+        duration_ms: 150000,
+        raw_events: JSON.stringify([]),
+        computed_metrics: JSON.stringify(metrics),
       });
 
-      // Game results with realistic computed metrics
-      for (let gi = 0; gi < gameTypes.length; gi++) {
-        const gameType = gameTypes[gi]!;
-        const gameId = `cccc${patient.id!.slice(4, 8)}-${String(si + 1).padStart(4, '0')}-${String(gi + 1).padStart(4, '0')}-0000-000000000000`;
-        const metrics = generateRealisticMetrics(gameType, age, si, patient.firstName);
-
-        await knex('game_results').insert({
-          id: gameId,
+      // Store computed metrics
+      for (const [metricName, value] of Object.entries(metrics)) {
+        if (typeof value !== 'number') continue;
+        await knex('patient_metrics').insert({
+          patient_id: patient.id,
           session_id: sessionId,
           game_type: gameType,
-          started_at: `${sessionDate}T14:01:00Z`,
-          completed_at: `${sessionDate}T14:03:30Z`,
-          duration_ms: 150000,
-          raw_events: JSON.stringify([]),
-          computed_metrics: JSON.stringify(metrics),
+          metric_name: metricName,
+          metric_value: value,
+          age_months: age,
+          percentile: null,
+          recorded_at: `${sessionDate}T14:01:00Z`,
         });
-
-        // Store computed metrics
-        for (const [metricName, value] of Object.entries(metrics)) {
-          if (typeof value !== 'number') continue;
-          await knex('patient_metrics').insert({
-            patient_id: patient.id,
-            session_id: sessionId,
-            game_type: gameType,
-            metric_name: metricName,
-            metric_value: value,
-            age_months: age,
-            percentile: null,
-            recorded_at: `${sessionDate}T14:01:00Z`,
-          });
-        }
       }
     }
   }
@@ -200,7 +193,7 @@ export async function seed(knex: Knex): Promise<void> {
       severity: 'amber',
       metric_name: 'attention_accuracy',
       game_type: 'cloud_catch',
-      description: 'Attention accuracy shows a declining trend across 5 sessions. This is a developmental pattern observation, not a clinical diagnosis.',
+      description: 'Attention accuracy shows a declining pattern. This is a developmental pattern observation, not a clinical diagnosis.',
       current_value: 0.58,
       threshold_value: null,
     },

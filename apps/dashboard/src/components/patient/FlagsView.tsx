@@ -16,6 +16,7 @@ const gameLabels: Record<GameType, string> = {
   cloud_catch: 'Cloud Catch',
   star_sequence: 'Star Sequence',
   sky_balance: 'Sky Balance',
+  breeze_spells: 'Breeze Spells',
 }
 
 const metricDisplayNames: Record<string, string> = {
@@ -31,6 +32,9 @@ const metricDisplayNames: Record<string, string> = {
   processing_speed: 'Processing Speed',
   sort_accuracy: 'Sort Accuracy',
   switch_cost: 'Switch Cost',
+  gesture_accuracy: 'Gesture Accuracy',
+  avg_cast_time: 'Average Cast Time',
+  spells_completed: 'Spells Completed',
 }
 
 const formatDate = (iso: string): string => {

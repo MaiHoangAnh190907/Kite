@@ -34,7 +34,12 @@ const domainConfig: Record<string, { label: string; games: GameType[]; metrics: 
   motor: {
     label: 'Motor',
     games: ['sky_balance'],
-    metrics: ['motor_precision', 'motor_smoothness'],
+    metrics: ['motor_precision', 'motor_smoothness', 'balance_stability', 'drop_rate', 'tilt_variability'],
+  },
+  gesture: {
+    label: 'Gesture',
+    games: ['breeze_spells'],
+    metrics: ['gesture_accuracy', 'avg_cast_time', 'spells_completed'],
   },
 }
 
@@ -49,6 +54,12 @@ const metricDisplayNames: Record<string, string> = {
   processing_speed: 'Processing Speed',
   sort_accuracy: 'Sort Accuracy',
   switch_cost: 'Switch Cost',
+  balance_stability: 'Balance Stability',
+  drop_rate: 'Drop Rate',
+  tilt_variability: 'Tilt Variability',
+  gesture_accuracy: 'Gesture Accuracy',
+  avg_cast_time: 'Average Cast Time',
+  spells_completed: 'Spells Completed',
 }
 
 function TrendIcon({ trend }: { trend: TrendDirection }): React.JSX.Element {

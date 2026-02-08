@@ -76,7 +76,7 @@ const firstNames = ['Patrick', 'Anh', 'Matheus', 'My']
 const lastNames = ['King', 'Mai', 'Maldaner', 'Pham']
 const flagStatuses: FlagStatus[] = ['green', 'green', 'red', 'red']
 const activeFlagCounts = [0, 0, 3, 3]
-const sessionCounts = [3, 3, 5, 5]
+const sessionCounts = [1, 1, 1, 1]
 const ageMonthsValues = [66, 72, 60, 54]
 
 const formatAge = (months: number): string => {
@@ -91,6 +91,8 @@ const makeDob = (ageMonths: number): string => {
   return d.toISOString().slice(0, 10)
 }
 
+const today = new Date().toISOString().slice(0, 10)
+
 const mockPatients: PatientListItem[] = firstNames.map((first, i) => ({
   id: uuid('patient', i + 1),
   firstName: first,
@@ -99,7 +101,7 @@ const mockPatients: PatientListItem[] = firstNames.map((first, i) => ({
   ageMonths: ageMonthsValues[i],
   ageDisplay: formatAge(ageMonthsValues[i]),
   totalSessions: sessionCounts[i],
-  lastVisit: randomDate(i * 3),
+  lastVisit: today,
   flagStatus: flagStatuses[i],
   activeFlagCount: activeFlagCounts[i],
 }))
@@ -179,8 +181,8 @@ const gameMetricsForType = (gt: GameType, patientIdx: number, sessionIdx: number
 
 const makeSession = (patientIdx: number, sessionIdx: number): SessionSummary => ({
   id: uuid(`session-p${String(patientIdx + 1)}`, sessionIdx + 1),
-  date: randomDate(sessionIdx * 30 + 10),
-  ageMonths: ageMonthsValues[patientIdx] - sessionIdx * 3,
+  date: today,
+  ageMonths: ageMonthsValues[patientIdx],
   gamesPlayed: 4,
   durationMs: 600000 + Math.floor(Math.random() * 300000),
   games: gameTypes.map((gt) => ({
@@ -216,178 +218,40 @@ for (let i = 0; i < 4; i++) {
 const makeMetricSeries = (patientIdx: number): MetricSeries[] => {
   const isMatheus = patientIdx === 2
   const isMy = patientIdx === 3
-  const numPoints = sessionCounts[patientIdx]
+  const sessionId = uuid(`session-p${String(patientIdx + 1)}`, 1)
+  const age = ageMonthsValues[patientIdx]
+
+  const point = (value: number, percentile: number): MetricSeries['dataPoints'] => [
+    { sessionId, date: today, ageMonths: age, value, percentile },
+  ]
 
   if (isMatheus) {
-    // Matheus: declining attention, poor sequence metrics
     return [
-      {
-        metricName: 'attention_accuracy',
-        gameType: 'cloud_catch',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p3`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.65 - i * 0.015).toFixed(2),
-          percentile: 22 - i * 2,
-        })),
-        trend: 'declining',
-        latestPercentile: 12,
-      },
-      {
-        metricName: 'reaction_time_cv',
-        gameType: 'cloud_catch',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p3`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.38 + i * 0.01).toFixed(2),
-          percentile: 14 - i,
-        })),
-        trend: 'declining',
-        latestPercentile: 11,
-      },
-      {
-        metricName: 'max_sequence_length',
-        gameType: 'star_sequence',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p3`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: 2,
-          percentile: 3,
-        })),
-        trend: 'stable',
-        latestPercentile: 3,
-      },
-      {
-        metricName: 'memory_accuracy',
-        gameType: 'star_sequence',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p3`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.38 + i * 0.01).toFixed(2),
-          percentile: 8 + i,
-        })),
-        trend: 'stable',
-        latestPercentile: 12,
-      },
+      { metricName: 'attention_accuracy', gameType: 'cloud_catch', dataPoints: point(0.58, 12), trend: 'declining', latestPercentile: 12 },
+      { metricName: 'reaction_time_cv', gameType: 'cloud_catch', dataPoints: point(0.42, 11), trend: 'declining', latestPercentile: 11 },
+      { metricName: 'max_sequence_length', gameType: 'star_sequence', dataPoints: point(2, 3), trend: 'stable', latestPercentile: 3 },
+      { metricName: 'memory_accuracy', gameType: 'star_sequence', dataPoints: point(0.38, 12), trend: 'stable', latestPercentile: 12 },
+      { metricName: 'gesture_accuracy', gameType: 'breeze_spells', dataPoints: point(0.72, 40), trend: 'stable', latestPercentile: 40 },
     ]
   }
 
   if (isMy) {
-    // My: poor balance/motor metrics
     return [
-      {
-        metricName: 'balance_stability',
-        gameType: 'sky_balance',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p4`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.45 + i * 0.005).toFixed(3),
-          percentile: 4,
-        })),
-        trend: 'stable',
-        latestPercentile: 4,
-      },
-      {
-        metricName: 'drop_rate',
-        gameType: 'sky_balance',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p4`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(22 - i * 0.5).toFixed(1),
-          percentile: 13,
-        })),
-        trend: 'stable',
-        latestPercentile: 13,
-      },
-      {
-        metricName: 'tilt_variability',
-        gameType: 'sky_balance',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p4`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.35 + i * 0.005).toFixed(3),
-          percentile: 8,
-        })),
-        trend: 'stable',
-        latestPercentile: 8,
-      },
-      {
-        metricName: 'attention_accuracy',
-        gameType: 'cloud_catch',
-        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-          sessionId: uuid(`session-p4`, i + 1),
-          date: randomDate((numPoints - 1 - i) * 60),
-          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-          value: +(0.76 + i * 0.02).toFixed(2),
-          percentile: 45 + i * 3,
-        })),
-        trend: 'improving',
-        latestPercentile: 55,
-      },
+      { metricName: 'balance_stability', gameType: 'sky_balance', dataPoints: point(0.45, 4), trend: 'stable', latestPercentile: 4 },
+      { metricName: 'drop_rate', gameType: 'sky_balance', dataPoints: point(22, 13), trend: 'stable', latestPercentile: 13 },
+      { metricName: 'tilt_variability', gameType: 'sky_balance', dataPoints: point(0.35, 8), trend: 'stable', latestPercentile: 8 },
+      { metricName: 'attention_accuracy', gameType: 'cloud_catch', dataPoints: point(0.78, 50), trend: 'stable', latestPercentile: 50 },
+      { metricName: 'gesture_accuracy', gameType: 'breeze_spells', dataPoints: point(0.70, 38), trend: 'stable', latestPercentile: 38 },
     ]
   }
 
-  // Patrick & Anh: healthy improving trends
+  // Patrick & Anh: healthy
   return [
-    {
-      metricName: 'attention_accuracy',
-      gameType: 'cloud_catch',
-      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((numPoints - 1 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-        value: +(0.78 + i * 0.04).toFixed(2),
-        percentile: 50 + i * 8,
-      })),
-      trend: 'improving',
-      latestPercentile: 66,
-    },
-    {
-      metricName: 'reaction_time_mean',
-      gameType: 'cloud_catch',
-      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((numPoints - 1 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-        value: 580 - i * 25,
-        percentile: 48 + i * 6,
-      })),
-      trend: 'improving',
-      latestPercentile: 60,
-    },
-    {
-      metricName: 'max_sequence_length',
-      gameType: 'star_sequence',
-      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((numPoints - 1 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-        value: 4 + Math.min(i, 2),
-        percentile: 45 + i * 10,
-      })),
-      trend: 'improving',
-      latestPercentile: 62,
-    },
-    {
-      metricName: 'balance_stability',
-      gameType: 'sky_balance',
-      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
-        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((numPoints - 1 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
-        value: +(0.15 - i * 0.015).toFixed(3),
-        percentile: 52 + i * 5,
-      })),
-      trend: 'improving',
-      latestPercentile: 62,
-    },
+    { metricName: 'attention_accuracy', gameType: 'cloud_catch', dataPoints: point(0.86, 66), trend: 'stable', latestPercentile: 66 },
+    { metricName: 'reaction_time_mean', gameType: 'cloud_catch', dataPoints: point(530, 60), trend: 'stable', latestPercentile: 60 },
+    { metricName: 'max_sequence_length', gameType: 'star_sequence', dataPoints: point(5, 62), trend: 'stable', latestPercentile: 62 },
+    { metricName: 'balance_stability', gameType: 'sky_balance', dataPoints: point(0.12, 62), trend: 'stable', latestPercentile: 62 },
+    { metricName: 'gesture_accuracy', gameType: 'breeze_spells', dataPoints: point(0.82, 58), trend: 'stable', latestPercentile: 58 },
   ]
 }
 
@@ -439,7 +303,7 @@ const patientFlags: Record<string, Flag[]> = {
       metricName: 'attention_accuracy',
       gameType: 'cloud_catch',
       description:
-        'Attention accuracy has declined over the last 5 sessions. Current percentile: 12th. Note: This is not a diagnosis.',
+        'Attention accuracy shows a declining pattern. Current percentile: 12th. Note: This is not a diagnosis.',
       currentValue: 0.58,
       thresholdPercentile: 20,
       actualPercentile: 12,
@@ -598,7 +462,7 @@ const sessionsPerPeriod: Array<{ date: string; count: number }> = Array.from(
 
 const mockAnalytics: AnalyticsData = {
   totalPatients: 4,
-  totalSessions: 16,
+  totalSessions: 4,
   activeTablets: 2,
   sessionsPerPeriod,
   avgPlayDurationMs: 720000,

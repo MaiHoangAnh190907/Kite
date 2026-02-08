@@ -1,4 +1,4 @@
-import { Cloud, Star, Wind, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Cloud, Star, Wind, Sparkles, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import type { SessionSummary, GameType, FlagStatus } from '@/types/api'
@@ -12,6 +12,7 @@ const gameConfig: Record<GameType, { label: string; icon: React.ElementType; dom
   cloud_catch: { label: 'Cloud Catch', icon: Cloud, domain: 'Attention' },
   star_sequence: { label: 'Star Sequence', icon: Star, domain: 'Memory' },
   sky_balance: { label: 'Sky Balance', icon: Wind, domain: 'Motor' },
+  breeze_spells: { label: 'Breeze Spells', icon: Sparkles, domain: 'Gesture' },
 }
 
 const metricDisplayNames: Record<string, string> = {
@@ -29,6 +30,9 @@ const metricDisplayNames: Record<string, string> = {
   processing_speed: 'Processing Speed',
   sort_accuracy: 'Sort Accuracy',
   switch_cost: 'Switch Cost',
+  gesture_accuracy: 'Gesture Accuracy',
+  avg_cast_time: 'Cast Time',
+  spells_completed: 'Spells Completed',
 }
 
 const formatMetricValue = (name: string, value: number): string => {
@@ -38,7 +42,7 @@ const formatMetricValue = (name: string, value: number): string => {
   if (name.includes('rate') || name.includes('accuracy') || name.includes('decay') || name.includes('smoothness') || name.includes('precision') || name.includes('completion')) {
     return `${String(Math.round(value * 100))}%`
   }
-  if (name.includes('sequence_length')) {
+  if (name.includes('sequence_length') || name.includes('spells_completed')) {
     return String(Math.round(value))
   }
   return value.toFixed(2)
