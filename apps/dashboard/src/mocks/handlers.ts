@@ -69,50 +69,15 @@ const ACCESS_TOKEN = 'mock-access-token-xyz'
 const REFRESH_TOKEN = 'mock-refresh-token-123'
 
 // ---------------------------------------------------------------------------
-// Mock Patients (20)
+// Mock Patients (4 demo patients)
 // ---------------------------------------------------------------------------
 
-const firstNames = [
-  'Emma', 'Liam', 'Olivia', 'Noah', 'Ava',
-  'Elijah', 'Sophia', 'James', 'Isabella', 'Lucas',
-  'Mia', 'Mason', 'Charlotte', 'Ethan', 'Amelia',
-  'Logan', 'Harper', 'Aiden', 'Evelyn', 'Jackson',
-]
-
-const lastNames = [
-  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones',
-  'Garcia', 'Miller', 'Davis', 'Martinez', 'Anderson',
-  'Taylor', 'Thomas', 'Hernandez', 'Moore', 'Martin',
-  'Lee', 'Clark', 'Lewis', 'Robinson', 'Walker',
-]
-
-const flagStatuses: FlagStatus[] = [
-  'green', 'amber', 'red', 'green', 'green',
-  'amber', 'green', 'green', 'green', 'green',
-  'green', 'amber', 'green', 'green', 'red',
-  'green', 'green', 'green', 'green', 'green',
-]
-
-const activeFlagCounts = [
-  0, 2, 1, 0, 0,
-  1, 0, 0, 0, 0,
-  0, 1, 0, 0, 1,
-  0, 0, 0, 0, 0,
-]
-
-const sessionCounts = [
-  4, 6, 3, 2, 5,
-  1, 4, 3, 2, 6,
-  3, 5, 1, 4, 2,
-  3, 6, 1, 5, 4,
-]
-
-const ageMonthsValues = [
-  62, 48, 72, 55, 84,
-  40, 66, 50, 78, 44,
-  60, 53, 70, 46, 80,
-  58, 42, 75, 64, 52,
-]
+const firstNames = ['Patrick', 'Anh', 'Matheus', 'My']
+const lastNames = ['King', 'Mai', 'Maldaner', 'Pham']
+const flagStatuses: FlagStatus[] = ['green', 'green', 'red', 'red']
+const activeFlagCounts = [0, 0, 3, 3]
+const sessionCounts = [3, 3, 5, 5]
+const ageMonthsValues = [66, 72, 60, 54]
 
 const formatAge = (months: number): string => {
   const years = Math.floor(months / 12)
@@ -140,32 +105,91 @@ const mockPatients: PatientListItem[] = firstNames.map((first, i) => ({
 }))
 
 // ---------------------------------------------------------------------------
-// Mock Patient Detail + Sessions (for first 5 patients)
+// Mock Patient Detail + Sessions
 // ---------------------------------------------------------------------------
 
-const gameTypes: GameType[] = ['cloud_catch', 'star_sequence', 'sky_balance']
+const gameTypes: GameType[] = ['cloud_catch', 'star_sequence', 'sky_balance', 'breeze_spells']
+
+const gameMetricsForType = (gt: GameType, patientIdx: number, sessionIdx: number): Record<string, number> => {
+  const isMatheus = patientIdx === 2
+  const isMy = patientIdx === 3
+
+  switch (gt) {
+    case 'cloud_catch':
+      if (isMatheus) {
+        return {
+          attention_accuracy: +(0.62 - sessionIdx * 0.01).toFixed(2),
+          reaction_time_mean: 850 - sessionIdx * 10,
+          reaction_time_cv: +(0.42 + sessionIdx * 0.01).toFixed(2),
+          false_positive_rate: +(0.22 - sessionIdx * 0.005).toFixed(3),
+          attention_decay: +(0.72 + sessionIdx * 0.01).toFixed(2),
+        }
+      }
+      return {
+        attention_accuracy: +(0.78 + sessionIdx * 0.03).toFixed(2),
+        reaction_time_mean: 580 - sessionIdx * 20,
+        reaction_time_cv: +(0.18 - sessionIdx * 0.01).toFixed(2),
+        false_positive_rate: +(0.06 - sessionIdx * 0.005).toFixed(3),
+        attention_decay: +(0.92 + sessionIdx * 0.02).toFixed(2),
+      }
+    case 'star_sequence':
+      if (isMatheus) {
+        return {
+          max_sequence_length: 2,
+          memory_accuracy: +(0.38 + sessionIdx * 0.01).toFixed(2),
+          learning_rate: +(0.005).toFixed(3),
+        }
+      }
+      return {
+        max_sequence_length: 4 + Math.min(sessionIdx, 2),
+        memory_accuracy: +(0.65 + sessionIdx * 0.04).toFixed(2),
+        learning_rate: +(0.04 + sessionIdx * 0.005).toFixed(3),
+      }
+    case 'sky_balance':
+      if (isMy) {
+        return {
+          balance_stability: +(0.45 + sessionIdx * 0.005).toFixed(3),
+          tilt_variability: +(0.35 + sessionIdx * 0.005).toFixed(3),
+          correction_smoothness: +(0.55 + sessionIdx * 0.005).toFixed(3),
+          max_balls_balanced: 2,
+          avg_balls_balanced: +(1.0 + sessionIdx * 0.1).toFixed(1),
+          drop_rate: +(22 - sessionIdx * 0.5).toFixed(1),
+          avg_time_on_plank: 4000 + sessionIdx * 200,
+        }
+      }
+      return {
+        balance_stability: +(0.15 - sessionIdx * 0.01).toFixed(3),
+        tilt_variability: +(0.10 - sessionIdx * 0.005).toFixed(3),
+        correction_smoothness: +(0.22 - sessionIdx * 0.01).toFixed(3),
+        max_balls_balanced: 5 + Math.min(sessionIdx, 3),
+        avg_balls_balanced: +(3.0 + sessionIdx * 0.3).toFixed(1),
+        drop_rate: +(6 - sessionIdx * 0.5).toFixed(1),
+        avg_time_on_plank: 14000 + sessionIdx * 1000,
+      }
+    case 'breeze_spells':
+      return {
+        gesture_accuracy: +(0.72 + sessionIdx * 0.03).toFixed(2),
+        avg_cast_time: 1600 - sessionIdx * 80,
+        spells_completed: 6 + sessionIdx,
+      }
+    default:
+      return {}
+  }
+}
 
 const makeSession = (patientIdx: number, sessionIdx: number): SessionSummary => ({
   id: uuid(`session-p${String(patientIdx + 1)}`, sessionIdx + 1),
   date: randomDate(sessionIdx * 30 + 10),
   ageMonths: ageMonthsValues[patientIdx] - sessionIdx * 3,
-  gamesPlayed: 3,
+  gamesPlayed: 4,
   durationMs: 600000 + Math.floor(Math.random() * 300000),
   games: gameTypes.map((gt) => ({
     gameType: gt,
-    metrics: {
-      attention_accuracy: +(0.65 + Math.random() * 0.3).toFixed(2),
-      reaction_time_mean: Math.floor(400 + Math.random() * 400),
-      reaction_time_cv: +(0.15 + Math.random() * 0.25).toFixed(2),
-      false_positive_rate: +(Math.random() * 0.15).toFixed(2),
-      attention_decay: +(0.7 + Math.random() * 0.25).toFixed(2),
-    },
+    metrics: gameMetricsForType(gt, patientIdx, sessionIdx),
   })),
 })
 
-const guardianNames = [
-  'Jennifer Smith', 'Michael Johnson', 'Maria Williams', 'David Brown', 'Lisa Jones',
-]
+const guardianNames = ['James King', 'Linh Mai', 'Lucas Maldaner', 'Trang Pham']
 
 const makePatientDetail = (idx: number): PatientDetail => ({
   id: uuid('patient', idx + 1),
@@ -173,12 +197,12 @@ const makePatientDetail = (idx: number): PatientDetail => ({
   lastName: lastNames[idx],
   dateOfBirth: makeDob(ageMonthsValues[idx]),
   ageMonths: ageMonthsValues[idx],
-  guardianName: idx < guardianNames.length ? guardianNames[idx] : null,
+  guardianName: guardianNames[idx] ?? null,
 })
 
 const patientSessions: Record<string, SessionSummary[]> = {}
-for (let i = 0; i < 5; i++) {
-  const count = Math.min(sessionCounts[i], 4)
+for (let i = 0; i < 4; i++) {
+  const count = sessionCounts[i]
   patientSessions[uuid('patient', i + 1)] = Array.from(
     { length: count },
     (_, s) => makeSession(i, s),
@@ -186,65 +210,185 @@ for (let i = 0; i < 5; i++) {
 }
 
 // ---------------------------------------------------------------------------
-// Mock Metrics (time series for first 5 patients)
+// Mock Metrics (time series for all 4 patients)
 // ---------------------------------------------------------------------------
 
 const makeMetricSeries = (patientIdx: number): MetricSeries[] => {
-  const metrics: MetricSeries[] = [
+  const isMatheus = patientIdx === 2
+  const isMy = patientIdx === 3
+  const numPoints = sessionCounts[patientIdx]
+
+  if (isMatheus) {
+    // Matheus: declining attention, poor sequence metrics
+    return [
+      {
+        metricName: 'attention_accuracy',
+        gameType: 'cloud_catch',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p3`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.65 - i * 0.015).toFixed(2),
+          percentile: 22 - i * 2,
+        })),
+        trend: 'declining',
+        latestPercentile: 12,
+      },
+      {
+        metricName: 'reaction_time_cv',
+        gameType: 'cloud_catch',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p3`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.38 + i * 0.01).toFixed(2),
+          percentile: 14 - i,
+        })),
+        trend: 'declining',
+        latestPercentile: 11,
+      },
+      {
+        metricName: 'max_sequence_length',
+        gameType: 'star_sequence',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p3`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: 2,
+          percentile: 3,
+        })),
+        trend: 'stable',
+        latestPercentile: 3,
+      },
+      {
+        metricName: 'memory_accuracy',
+        gameType: 'star_sequence',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p3`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.38 + i * 0.01).toFixed(2),
+          percentile: 8 + i,
+        })),
+        trend: 'stable',
+        latestPercentile: 12,
+      },
+    ]
+  }
+
+  if (isMy) {
+    // My: poor balance/motor metrics
+    return [
+      {
+        metricName: 'balance_stability',
+        gameType: 'sky_balance',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p4`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.45 + i * 0.005).toFixed(3),
+          percentile: 4,
+        })),
+        trend: 'stable',
+        latestPercentile: 4,
+      },
+      {
+        metricName: 'drop_rate',
+        gameType: 'sky_balance',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p4`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(22 - i * 0.5).toFixed(1),
+          percentile: 13,
+        })),
+        trend: 'stable',
+        latestPercentile: 13,
+      },
+      {
+        metricName: 'tilt_variability',
+        gameType: 'sky_balance',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p4`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.35 + i * 0.005).toFixed(3),
+          percentile: 8,
+        })),
+        trend: 'stable',
+        latestPercentile: 8,
+      },
+      {
+        metricName: 'attention_accuracy',
+        gameType: 'cloud_catch',
+        dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+          sessionId: uuid(`session-p4`, i + 1),
+          date: randomDate((numPoints - 1 - i) * 60),
+          ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+          value: +(0.76 + i * 0.02).toFixed(2),
+          percentile: 45 + i * 3,
+        })),
+        trend: 'improving',
+        latestPercentile: 55,
+      },
+    ]
+  }
+
+  // Patrick & Anh: healthy improving trends
+  return [
     {
       metricName: 'attention_accuracy',
       gameType: 'cloud_catch',
-      dataPoints: Array.from({ length: 4 }, (_, i) => ({
+      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
         sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((3 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (3 - i) * 3,
-        value: +(0.65 + i * 0.05 + Math.random() * 0.05).toFixed(2),
-        percentile: 35 + i * 7 + Math.floor(Math.random() * 5),
+        date: randomDate((numPoints - 1 - i) * 90),
+        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+        value: +(0.78 + i * 0.04).toFixed(2),
+        percentile: 50 + i * 8,
       })),
       trend: 'improving',
-      latestPercentile: 55,
+      latestPercentile: 66,
     },
     {
       metricName: 'reaction_time_mean',
       gameType: 'cloud_catch',
-      dataPoints: Array.from({ length: 3 }, (_, i) => ({
+      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
         sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((2 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (2 - i) * 3,
-        value: 700 - i * 30 + Math.floor(Math.random() * 20),
-        percentile: 40 + i * 5,
+        date: randomDate((numPoints - 1 - i) * 90),
+        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+        value: 580 - i * 25,
+        percentile: 48 + i * 6,
       })),
       trend: 'improving',
-      latestPercentile: 50,
+      latestPercentile: 60,
     },
     {
-      metricName: 'reaction_time_cv',
-      gameType: 'cloud_catch',
-      dataPoints: Array.from({ length: 3 }, (_, i) => ({
-        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((2 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (2 - i) * 3,
-        value: +(0.35 - i * 0.03 + Math.random() * 0.02).toFixed(2),
-        percentile: 15 + i * 5,
-      })),
-      trend: 'stable',
-      latestPercentile: 25,
-    },
-    {
-      metricName: 'sequence_accuracy',
+      metricName: 'max_sequence_length',
       gameType: 'star_sequence',
-      dataPoints: Array.from({ length: 3 }, (_, i) => ({
+      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
         sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
-        date: randomDate((2 - i) * 90),
-        ageMonths: ageMonthsValues[patientIdx] - (2 - i) * 3,
-        value: +(0.6 + i * 0.08 + Math.random() * 0.05).toFixed(2),
-        percentile: 30 + i * 10,
+        date: randomDate((numPoints - 1 - i) * 90),
+        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+        value: 4 + Math.min(i, 2),
+        percentile: 45 + i * 10,
       })),
       trend: 'improving',
-      latestPercentile: 48,
+      latestPercentile: 62,
+    },
+    {
+      metricName: 'balance_stability',
+      gameType: 'sky_balance',
+      dataPoints: Array.from({ length: numPoints }, (_, i) => ({
+        sessionId: uuid(`session-p${String(patientIdx + 1)}`, i + 1),
+        date: randomDate((numPoints - 1 - i) * 90),
+        ageMonths: ageMonthsValues[patientIdx] - (numPoints - 1 - i) * 3,
+        value: +(0.15 - i * 0.015).toFixed(3),
+        percentile: 52 + i * 5,
+      })),
+      trend: 'improving',
+      latestPercentile: 62,
     },
   ]
-  return metrics
 }
 
 // ---------------------------------------------------------------------------
@@ -252,19 +396,19 @@ const makeMetricSeries = (patientIdx: number): MetricSeries[] => {
 // ---------------------------------------------------------------------------
 
 const patientFlags: Record<string, Flag[]> = {
-  // Patient index 1 (Liam Johnson) - 2 amber flags
-  [uuid('patient', 2)]: [
+  // Matheus Maldaner (patient-003) - red + 2 amber flags
+  [uuid('patient', 3)]: [
     {
       id: uuid('flag', 1),
-      severity: 'amber',
+      severity: 'red',
       flagType: 'below_threshold',
-      metricName: 'reaction_time_cv',
-      gameType: 'cloud_catch',
+      metricName: 'max_sequence_length',
+      gameType: 'star_sequence',
       description:
-        'Reaction time variability is in the 12th percentile for age. This may indicate inconsistent attention. Note: This is not a diagnosis.',
-      currentValue: 0.38,
-      thresholdPercentile: 15,
-      actualPercentile: 12,
+        'Maximum sequence length is in the 3rd percentile for age. This is a developmental pattern observation, not a clinical diagnosis.',
+      currentValue: 2,
+      thresholdPercentile: 5,
+      actualPercentile: 3,
       createdAt: '2026-02-05T15:00:00Z',
       isDismissed: false,
       dismissedBy: null,
@@ -274,35 +418,86 @@ const patientFlags: Record<string, Flag[]> = {
     {
       id: uuid('flag', 2),
       severity: 'amber',
-      flagType: 'declining_trend',
-      metricName: 'attention_accuracy',
+      flagType: 'below_threshold',
+      metricName: 'reaction_time_cv',
       gameType: 'cloud_catch',
       description:
-        'Attention accuracy has declined over the last 3 sessions. Current percentile: 18th. Note: This is not a diagnosis.',
-      currentValue: 0.68,
-      thresholdPercentile: 20,
-      actualPercentile: 18,
+        'Reaction time variability is in the 11th percentile for age. This may indicate inconsistent attention. Note: This is not a diagnosis.',
+      currentValue: 0.42,
+      thresholdPercentile: 15,
+      actualPercentile: 11,
       createdAt: '2026-02-05T15:01:00Z',
       isDismissed: false,
       dismissedBy: null,
       dismissedAt: null,
       dismissReason: null,
     },
-  ],
-  // Patient index 2 (Olivia Williams) - 1 red flag
-  [uuid('patient', 3)]: [
     {
       id: uuid('flag', 3),
-      severity: 'red',
-      flagType: 'below_threshold',
-      metricName: 'reaction_time_mean',
+      severity: 'amber',
+      flagType: 'declining_trend',
+      metricName: 'attention_accuracy',
       gameType: 'cloud_catch',
       description:
-        'Mean reaction time is in the 5th percentile for age. Consistently slower responses may warrant further evaluation. Note: This is not a diagnosis.',
-      currentValue: 920,
-      thresholdPercentile: 10,
-      actualPercentile: 5,
+        'Attention accuracy has declined over the last 5 sessions. Current percentile: 12th. Note: This is not a diagnosis.',
+      currentValue: 0.58,
+      thresholdPercentile: 20,
+      actualPercentile: 12,
+      createdAt: '2026-02-05T15:02:00Z',
+      isDismissed: false,
+      dismissedBy: null,
+      dismissedAt: null,
+      dismissReason: null,
+    },
+  ],
+  // My Pham (patient-004) - red + 2 amber flags
+  [uuid('patient', 4)]: [
+    {
+      id: uuid('flag', 4),
+      severity: 'red',
+      flagType: 'below_threshold',
+      metricName: 'balance_stability',
+      gameType: 'sky_balance',
+      description:
+        'Balance stability is in the 4th percentile for age. This is a developmental pattern observation, not a clinical diagnosis.',
+      currentValue: 0.45,
+      thresholdPercentile: 5,
+      actualPercentile: 4,
       createdAt: '2026-02-06T10:30:00Z',
+      isDismissed: false,
+      dismissedBy: null,
+      dismissedAt: null,
+      dismissReason: null,
+    },
+    {
+      id: uuid('flag', 5),
+      severity: 'amber',
+      flagType: 'below_threshold',
+      metricName: 'drop_rate',
+      gameType: 'sky_balance',
+      description:
+        'Drop rate is in the 13th percentile for age. This is a developmental pattern observation, not a clinical diagnosis.',
+      currentValue: 22,
+      thresholdPercentile: 15,
+      actualPercentile: 13,
+      createdAt: '2026-02-06T10:31:00Z',
+      isDismissed: false,
+      dismissedBy: null,
+      dismissedAt: null,
+      dismissReason: null,
+    },
+    {
+      id: uuid('flag', 6),
+      severity: 'amber',
+      flagType: 'high_variability',
+      metricName: 'tilt_variability',
+      gameType: 'sky_balance',
+      description:
+        'Tilt variability is unusually high for age. This is a developmental pattern observation, not a clinical diagnosis.',
+      currentValue: 0.35,
+      thresholdPercentile: null,
+      actualPercentile: 8,
+      createdAt: '2026-02-06T10:32:00Z',
       isDismissed: false,
       dismissedBy: null,
       dismissedAt: null,
@@ -397,13 +592,13 @@ const sessionsPerPeriod: Array<{ date: string; count: number }> = Array.from(
   { length: 30 },
   (_, i) => ({
     date: randomDate(29 - i),
-    count: Math.floor(5 + Math.random() * 15),
+    count: Math.floor(2 + Math.random() * 6),
   }),
 )
 
 const mockAnalytics: AnalyticsData = {
-  totalPatients: 20,
-  totalSessions: 68,
+  totalPatients: 4,
+  totalSessions: 16,
   activeTablets: 2,
   sessionsPerPeriod,
   avgPlayDurationMs: 720000,

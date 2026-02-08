@@ -15,11 +15,10 @@ const VALID_PIN = '1234';
 function createMockPatients(): PatientsResponse {
   return {
     patients: [
-      { id: uuid(), firstName: 'Emma', lastInitial: 'S', ageMonths: 62, ageDisplay: '5 yrs 2 mos', hasSessionToday: false },
-      { id: uuid(), firstName: 'Liam', lastInitial: 'J', ageMonths: 55, ageDisplay: '4 yrs 7 mos', hasSessionToday: false },
-      { id: uuid(), firstName: 'Olivia', lastInitial: 'W', ageMonths: 72, ageDisplay: '6 yrs 0 mos', hasSessionToday: true },
-      { id: uuid(), firstName: 'Noah', lastInitial: 'B', ageMonths: 49, ageDisplay: '4 yrs 1 mo', hasSessionToday: false },
-      { id: uuid(), firstName: 'Ava', lastInitial: 'D', ageMonths: 84, ageDisplay: '7 yrs 0 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'Patrick', lastInitial: 'K', ageMonths: 66, ageDisplay: '5 yrs 6 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'Anh', lastInitial: 'M', ageMonths: 72, ageDisplay: '6 yrs 0 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'Matheus', lastInitial: 'M', ageMonths: 60, ageDisplay: '5 yrs 0 mos', hasSessionToday: false },
+      { id: uuid(), firstName: 'My', lastInitial: 'P', ageMonths: 54, ageDisplay: '4 yrs 6 mos', hasSessionToday: false },
     ],
   };
 }

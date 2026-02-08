@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ChevronLeft, ChevronRight, Users } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Users, UserPlus } from 'lucide-react'
 import { usePatients } from '@/hooks/use-patients'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
@@ -128,7 +128,13 @@ export function Patients(): React.JSX.Element {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-text-primary">Patients</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-text-primary">Patients</h1>
+        <Button variant="primary" size="sm" onClick={() => {}}>
+          <UserPlus className="h-4 w-4" />
+          Add Patient
+        </Button>
+      </div>
 
       {/* Today's Patients */}
       {!isLoading && todaysPatients.length > 0 && (
