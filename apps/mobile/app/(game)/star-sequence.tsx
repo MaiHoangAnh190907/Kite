@@ -265,11 +265,6 @@ export default function StarSequenceScreen(): React.JSX.Element {
           );
         })}
       </View>
-
-      {/* Score */}
-      <View style={styles.scoreWrap}>
-        <Text style={styles.scoreText}>Sequence: {sequence.length}</Text>
-      </View>
     </View>
   );
 }
