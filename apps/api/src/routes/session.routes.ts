@@ -94,7 +94,7 @@ sessionRouter.post(
         .returning('*');
 
       const difficultyPreset = getDifficultyPreset(ageMonths);
-      const games: GameType[] = ['cloud_catch', 'star_sequence', 'sky_sigils', 'sky_sort'];
+      const games: GameType[] = ['cloud_catch', 'star_sequence', 'sky_sigils'];
 
       res.status(201).json({
         sessionId: session.id,
@@ -109,7 +109,7 @@ sessionRouter.post(
 
 // POST /sessions/:sessionId/events
 const gameEventsSchema = z.object({
-  gameType: z.enum(['cloud_catch', 'star_sequence', 'sky_sigils', 'sky_sort']),
+  gameType: z.enum(['cloud_catch', 'star_sequence', 'sky_sigils']),
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime(),
   durationMs: z.number().int().positive(),
@@ -151,7 +151,7 @@ sessionRouter.post(
 // PATCH /sessions/:sessionId/complete
 const completeSessionSchema = z.object({
   completedAt: z.string().datetime(),
-  gamesCompleted: z.number().int().min(0).max(4),
+  gamesCompleted: z.number().int().min(0).max(3),
   totalDurationMs: z.number().int().positive(),
 });
 

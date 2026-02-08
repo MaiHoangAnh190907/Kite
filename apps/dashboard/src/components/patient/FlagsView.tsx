@@ -16,7 +16,6 @@ const gameLabels: Record<GameType, string> = {
   cloud_catch: 'Cloud Catch',
   star_sequence: 'Star Sequence',
   sky_sigils: 'Sky Sigils',
-  sky_sort: 'Sky Sort',
 }
 
 const metricDisplayNames: Record<string, string> = {

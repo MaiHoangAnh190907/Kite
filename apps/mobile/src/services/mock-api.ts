@@ -56,7 +56,7 @@ export async function mockCreateSession(patientId: string): Promise<CreateSessio
     sessionId: uuid(),
     patientAgeMonths: 62,
     gamesConfig: {
-      games: ['cloud_catch', 'star_sequence', 'sky_sigils', 'sky_sort'],
+      games: ['cloud_catch', 'star_sequence', 'sky_sigils'],
       difficultyPreset: 'age_5',
     },
   };

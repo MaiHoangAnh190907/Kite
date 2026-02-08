@@ -212,29 +212,51 @@ function makeCirclePoints(cx: number, cy: number, r: number, n: number, clockwis
   return pts;
 }
 
-function makeVPoints(down: boolean): Point[] {
+function makeVPoints(down: boolean, spread: number = 100): Point[] {
   const pts: Point[] = [];
   const n = 20;
+  const halfSpread = spread / 2;
+  const cx = 150;
   if (down) {
     // V shape: top-left → bottom-center → top-right
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      pts.push({ x: 50 + t * 100, y: 50 + t * 150 });
+      pts.push({ x: cx - halfSpread + t * halfSpread, y: 50 + t * 150 });
     }
     for (let i = 1; i <= n; i++) {
       const t = i / n;
-      pts.push({ x: 150 + t * 100, y: 200 - t * 150 });
+      pts.push({ x: cx + t * halfSpread, y: 200 - t * 150 });
     }
   } else {
     // Inverted V: bottom-left → top-center → bottom-right
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      pts.push({ x: 50 + t * 100, y: 200 - t * 150 });
+      pts.push({ x: cx - halfSpread + t * halfSpread, y: 200 - t * 150 });
     }
     for (let i = 1; i <= n; i++) {
       const t = i / n;
-      pts.push({ x: 150 + t * 100, y: 50 + t * 150 });
+      pts.push({ x: cx + t * halfSpread, y: 50 + t * 150 });
     }
+  }
+  return pts;
+}
+
+function makeVPointsReversed(down: boolean, spread: number = 100): Point[] {
+  // Same shapes but drawn right-to-left
+  return makeVPoints(down, spread).reverse();
+}
+
+function makeCirclePointsFromAngle(cx: number, cy: number, r: number, n: number, startAngle: number, clockwise: boolean): Point[] {
+  const pts: Point[] = [];
+  for (let i = 0; i <= n; i++) {
+    const sweep = clockwise
+      ? (i / n) * Math.PI * 2
+      : -(i / n) * Math.PI * 2;
+    const angle = startAngle + sweep;
+    pts.push({
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    });
   }
   return pts;
 }
@@ -255,14 +277,37 @@ const RAW_TEMPLATES: { name: SymbolName; rawPoints: Point[] }[] = [
   { name: 'vertical_line', rawPoints: makeLinePoints(150, 50, 150, 250, 30) },
   // Vertical line — bottom to top
   { name: 'vertical_line', rawPoints: makeLinePoints(150, 250, 150, 50, 30) },
-  // V shape (down)
-  { name: 'v_shape', rawPoints: makeVPoints(true) },
-  // Inverted V (up caret)
-  { name: 'inverted_v', rawPoints: makeVPoints(false) },
-  // Circle — clockwise
+  // V shape — left-to-right, normal spread
+  { name: 'v_shape', rawPoints: makeVPoints(true, 100) },
+  // V shape — right-to-left
+  { name: 'v_shape', rawPoints: makeVPointsReversed(true, 100) },
+  // V shape — wide spread
+  { name: 'v_shape', rawPoints: makeVPoints(true, 160) },
+  // V shape — narrow spread
+  { name: 'v_shape', rawPoints: makeVPoints(true, 60) },
+  // Inverted V — left-to-right, normal spread
+  { name: 'inverted_v', rawPoints: makeVPoints(false, 100) },
+  // Inverted V — right-to-left
+  { name: 'inverted_v', rawPoints: makeVPointsReversed(false, 100) },
+  // Inverted V — wide spread
+  { name: 'inverted_v', rawPoints: makeVPoints(false, 160) },
+  // Inverted V — narrow spread
+  { name: 'inverted_v', rawPoints: makeVPoints(false, 60) },
+  // Circle — clockwise from right (0°)
   { name: 'circle', rawPoints: makeCirclePoints(150, 150, 100, 36, true) },
-  // Circle — counterclockwise
+  // Circle — counterclockwise from right (0°)
   { name: 'circle', rawPoints: makeCirclePoints(150, 150, 100, 36, false) },
+  // Circle — clockwise from top (-90°)
+  { name: 'circle', rawPoints: makeCirclePointsFromAngle(150, 150, 100, 36, -Math.PI / 2, true) },
+  // Circle — counterclockwise from top (-90°)
+  { name: 'circle', rawPoints: makeCirclePointsFromAngle(150, 150, 100, 36, -Math.PI / 2, false) },
+  // Circle — clockwise from bottom (90°)
+  { name: 'circle', rawPoints: makeCirclePointsFromAngle(150, 150, 100, 36, Math.PI / 2, true) },
+  // Circle — counterclockwise from left (180°)
+  { name: 'circle', rawPoints: makeCirclePointsFromAngle(150, 150, 100, 36, Math.PI, false) },
+  // Circle — smaller radius
+  { name: 'circle', rawPoints: makeCirclePoints(150, 150, 60, 36, true) },
+  { name: 'circle', rawPoints: makeCirclePoints(150, 150, 60, 36, false) },
 ];
 
 const TEMPLATES: Template[] = RAW_TEMPLATES.map((t) => ({
@@ -273,7 +318,7 @@ const TEMPLATES: Template[] = RAW_TEMPLATES.map((t) => ({
 // ─── Public API ──────────────────────────────────────────────────────
 
 export function recognize(points: Point[]): RecognitionResult | null {
-  if (points.length < 10) return null;
+  if (points.length < 6) return null;
 
   let processed = resample(points, NUM_POINTS);
   processed = rotateToZero(processed);
@@ -301,7 +346,7 @@ export function recognize(points: Point[]): RecognitionResult | null {
 
   const score = 1 - bestDistance / HALF_DIAGONAL;
 
-  if (score < 0.65) return null;
+  if (score < 0.35) return null;
 
   return { name: bestTemplate.name, score };
 }

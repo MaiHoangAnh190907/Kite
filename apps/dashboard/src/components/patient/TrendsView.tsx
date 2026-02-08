@@ -36,11 +36,6 @@ const domainConfig: Record<string, { label: string; games: GameType[]; metrics: 
     games: ['sky_sigils'],
     metrics: ['motor_precision', 'motor_smoothness'],
   },
-  processing: {
-    label: 'Processing',
-    games: ['sky_sort'],
-    metrics: ['processing_speed', 'sort_accuracy', 'switch_cost'],
-  },
 }
 
 const metricDisplayNames: Record<string, string> = {
