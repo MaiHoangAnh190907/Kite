@@ -22,8 +22,16 @@ export const setLogoutHandler = (fn: LogoutHandler): void => {
   onLogout = fn
 }
 
+// Use relative URL for mock API so MSW can intercept requests
+const getBaseUrl = (): string => {
+  if (import.meta.env.VITE_USE_MOCK_API === 'true') {
+    return '/api/v1'
+  }
+  return (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/v1'
+}
+
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL as string | undefined ?? '/api/v1',
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

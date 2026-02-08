@@ -171,10 +171,7 @@ export function LatestSession({ sessions }: LatestSessionProps): React.JSX.Eleme
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10">
                   <Icon className="h-4 w-4 text-brand-primary" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-text-primary">{config.label}</h3>
-                  <p className="text-xs text-text-secondary">{config.domain}</p>
-                </div>
+                <h3 className="text-sm font-semibold text-text-primary">{config.domain}</h3>
                 {hasFlag && (
                   <div className="ml-auto">
                     <Badge variant="amber">Flagged</Badge>

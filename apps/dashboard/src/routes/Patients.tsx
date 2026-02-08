@@ -10,6 +10,11 @@ import { Button } from '@/components/ui/Button'
 import type { PatientListItem, FlagStatus } from '@/types/api'
 
 type StatusFilter = 'all' | 'flagged' | 'red'
+type PatientStatus = 'New' | 'Existing'
+
+interface PatientRow extends PatientListItem {
+  patientStatus: PatientStatus
+}
 
 const statusLabel: Record<FlagStatus, string> = {
   green: 'No concerns',
@@ -17,12 +22,13 @@ const statusLabel: Record<FlagStatus, string> = {
   red: 'Review recommended',
 }
 
-const columns: Column<PatientListItem>[] = [
+const columns: Column<PatientRow>[] = [
   { key: 'firstName', label: 'Name', sortable: true },
   { key: 'ageMonths', label: 'Age', sortable: true },
-  { key: 'lastVisit', label: 'Last Visit', sortable: true },
   { key: 'totalSessions', label: 'Sessions', sortable: true },
-  { key: 'flagStatus', label: 'Status', sortable: true },
+  { key: 'lastVisit', label: 'Last Visit', sortable: true },
+  { key: 'flagStatus', label: 'Flag Status', sortable: true },
+  { key: 'patientStatus', label: 'Patient Status', sortable: true },
 ]
 
 function useDebounce(value: string, delay: number): string {
@@ -40,7 +46,7 @@ export function Patients(): React.JSX.Element {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [sortKey, setSortKey] = useState<keyof PatientListItem & string>('lastVisit')
+  const [sortKey, setSortKey] = useState<keyof PatientRow & string>('lastVisit')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
 
@@ -55,16 +61,23 @@ export function Patients(): React.JSX.Element {
     order: sortOrder,
   })
 
-  const todaysPatients = useMemo(() => {
+  const patients = useMemo<PatientRow[]>(() => {
     if (!data) return []
-    const today = new Date().toISOString().slice(0, 10)
-    return data.patients.filter((p) => p.lastVisit === today)
+    return data.patients.map((p) => ({
+      ...p,
+      patientStatus: p.totalSessions <= 1 ? 'New' as const : 'Existing' as const,
+    }))
   }, [data])
+
+  const todaysPatients = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return patients.filter((p) => p.lastVisit === today)
+  }, [patients])
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1
 
   const handleSort = useCallback(
-    (key: keyof PatientListItem & string) => {
+    (key: keyof PatientRow & string) => {
       if (key === sortKey) {
         setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
       } else {
@@ -77,14 +90,14 @@ export function Patients(): React.JSX.Element {
   )
 
   const handleRowClick = useCallback(
-    (row: PatientListItem) => {
+    (row: PatientRow) => {
       navigate(`/patients/${row.id}`)
     },
     [navigate],
   )
 
   const renderCell = useCallback(
-    (key: keyof PatientListItem & string, _value: PatientListItem[keyof PatientListItem], row: PatientListItem): React.ReactNode => {
+    (key: keyof PatientRow & string, _value: PatientRow[keyof PatientRow], row: PatientRow): React.ReactNode => {
       switch (key) {
         case 'firstName':
           return (
@@ -98,6 +111,12 @@ export function Patients(): React.JSX.Element {
           return (
             <Badge variant={row.flagStatus}>
               {statusLabel[row.flagStatus]}
+            </Badge>
+          )
+        case 'patientStatus':
+          return (
+            <Badge variant={row.patientStatus === 'New' ? 'amber' : 'green'}>
+              {row.patientStatus}
             </Badge>
           )
         default:
@@ -203,11 +222,11 @@ export function Patients(): React.JSX.Element {
               </div>
             ))}
           </div>
-        ) : data && data.patients.length > 0 ? (
+        ) : data && patients.length > 0 ? (
           <>
-            <Table<PatientListItem>
+            <Table<PatientRow>
               columns={columns}
-              data={data.patients}
+              data={patients}
               sortKey={sortKey}
               sortOrder={sortOrder}
               onSort={handleSort}

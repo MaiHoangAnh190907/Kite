@@ -17,6 +17,7 @@ import { Colors } from '../../src/constants/colors';
 // ─── Constants ────────────────────────────────────────────────────────
 
 const GAME_DURATION_MS = 150_000; // 2.5 minutes
+const MAX_LIVES = 3;
 const CLOUD_SIZE = 70;
 const KITE_WIDTH = 60;
 const KITE_HEIGHT = 70;
@@ -95,12 +96,14 @@ export default function CloudCatchScreen(): React.JSX.Element {
   const comboRef = useRef(0);
   const scoreRef = useRef(0);
   const currentSpeedRef = useRef(BASE_SPEED);
+  const livesRef = useRef(MAX_LIVES);
 
   const [clouds, setClouds] = useState<Cloud[]>([]);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
   const [kiteX, setKiteX] = useState(width / 2);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
+  const [lives, setLives] = useState(MAX_LIVES);
   const [flash, setFlash] = useState<'gold' | 'red' | null>(null);
   const [showEndAnim, setShowEndAnim] = useState(false);
   const [starsEarned, setStarsEarned] = useState(false);
@@ -167,6 +170,26 @@ export default function CloudCatchScreen(): React.JSX.Element {
     });
   };
 
+  // ─── End game helper ───────────────────────────────
+  const finishGame = (now: number) => {
+    gameOverRef.current = true;
+    for (const c of cloudsRef.current) {
+      if (c.type === 'golden' && !c.caught && !c.exited) {
+        eventsRef.current.push({
+          type: 'miss',
+          stimulusId: c.id,
+          stimulusType: 'golden',
+          timeOnScreen: now - c.spawnTimestamp,
+        });
+      }
+    }
+    recordEvents('cloud_catch', eventsRef.current);
+    endGame('cloud_catch');
+    setShowEndAnim(true);
+    setTimeout(() => setStarsEarned(true), 800);
+    setTimeout(() => router.replace('/(game)/transition'), 3500);
+  };
+
   // ─── Game loop ──────────────────────────────────
   useEffect(() => {
     startGame('cloud_catch');
@@ -181,22 +204,7 @@ export default function CloudCatchScreen(): React.JSX.Element {
       const remaining = GAME_DURATION_MS - elapsed;
 
       if (remaining <= 0) {
-        gameOverRef.current = true;
-        for (const c of cloudsRef.current) {
-          if (c.type === 'golden' && !c.caught && !c.exited) {
-            eventsRef.current.push({
-              type: 'miss',
-              stimulusId: c.id,
-              stimulusType: 'golden',
-              timeOnScreen: now - c.spawnTimestamp,
-            });
-          }
-        }
-        recordEvents('cloud_catch', eventsRef.current);
-        endGame('cloud_catch');
-        setShowEndAnim(true);
-        setTimeout(() => setStarsEarned(true), 800);
-        setTimeout(() => router.replace('/(game)/transition'), 3500);
+        finishGame(now);
         return;
       }
 
@@ -240,12 +248,11 @@ export default function CloudCatchScreen(): React.JSX.Element {
             setFlash('gold');
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           } else {
-            // Any obstacle — lose points, reset combo & speed
-            const penalty = cloud.type === 'bird' ? 20 : 30;
-            scoreRef.current = Math.max(0, scoreRef.current - penalty);
+            // Any obstacle — lose a life, reset combo & speed
+            livesRef.current -= 1;
+            setLives(livesRef.current);
             comboRef.current = 0;
             currentSpeedRef.current = BASE_SPEED;
-            setScore(scoreRef.current);
             setCombo(0);
             setFlash('red');
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -263,6 +270,13 @@ export default function CloudCatchScreen(): React.JSX.Element {
           });
 
           setTimeout(() => setFlash(null), 200);
+
+          // Out of lives — end game
+          if (livesRef.current <= 0) {
+            finishGame(now);
+            return;
+          }
+
           continue;
         }
 
@@ -335,6 +349,17 @@ export default function CloudCatchScreen(): React.JSX.Element {
             <Text style={styles.comboText}>x{combo}</Text>
           </View>
         )}
+        <View style={styles.livesContainer}>
+          {Array.from({ length: MAX_LIVES }, (_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.lifeHeart,
+                i >= lives && styles.lifeHeartLost,
+              ]}
+            />
+          ))}
+        </View>
       </View>
 
       {/* Flash overlay */}
@@ -456,6 +481,25 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: Colors.sunsetOrange,
+  },
+  livesContainer: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  lifeHeart: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+  },
+  lifeHeartLost: {
+    backgroundColor: 'rgba(0,0,0,0.12)',
   },
   // Flash overlay
   flash: {
