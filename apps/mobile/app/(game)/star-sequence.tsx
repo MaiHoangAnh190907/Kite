@@ -71,9 +71,8 @@ export default function StarSequenceScreen(): React.JSX.Element {
     startGame('star_sequence');
     // Build initial 2-star sequence
     const s1 = Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE));
-    const s2 = Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE));
-    sequenceRef.current = [s1, s2];
-    setSequence([s1, s2]);
+    sequenceRef.current = [s1];
+    setSequence([s1]);
     setShowIdx(0);
     setPhase('showing');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,10 +211,19 @@ export default function StarSequenceScreen(): React.JSX.Element {
 
       {/* Phase indicator */}
       <View style={styles.phaseWrap}>
+        <Text style={styles.roundText}>Round {roundIdx + 1}</Text>
+        
         <Text style={styles.phaseText}>
-          {phase === 'showing' ? 'Watch the stars...' : phase === 'input' ? 'Your turn!' : phase === 'feedback' ? (feedback === 'correct' ? 'Great!' : 'Oh no!') : ''}
+          {phase === 'showing'
+          ? 'Watch the stars...'
+          : phase === 'input'
+          ? 'Your turn!'
+          : phase === 'feedback'
+          ? (feedback === 'correct' ? 'Great!' : 'Oh no!')
+          : ''}
         </Text>
       </View>
+
 
       {/* Star grid */}
       <View style={styles.gridWrap}>
@@ -291,6 +299,15 @@ const styles = StyleSheet.create({
   phaseWrap: {
     marginBottom: 24,
   },
+
+  roundText: {
+    fontSize: 16,
+    color: Colors.cloudWhite,
+    fontWeight: '600',
+    marginBottom: 6,
+    opacity: 0.85,
+  },
+
   phaseText: {
     fontSize: 28,
     fontWeight: '700',
