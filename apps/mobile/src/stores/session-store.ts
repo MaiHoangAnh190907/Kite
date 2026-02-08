@@ -46,6 +46,7 @@ const STICKER_MAP: Record<GameType, string> = {
   star_sequence: 'constellation',
   sky_sigils: 'rainbow',
   sky_sort: 'balloon',
+  wind_trails: 'feather',
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({

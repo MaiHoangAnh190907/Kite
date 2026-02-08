@@ -8,286 +8,365 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
+import { v4 as uuid } from 'uuid';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../../src/constants/colors';
 import { useSessionStore } from '../../src/stores/session-store';
+import { recognize, type SymbolName } from '../../src/utils/unistroke-recognizer';
+
+// ─── Constants ───────────────────────────────────────────────────────
 
 const GAME_DURATION_MS = 150_000;
-const HIT_RADIUS = 26;
-const COMPLETION_THRESHOLD = 0.70;
-const INITIAL_SCALE = 0.78;
-const MIN_SCALE = 0.45;
-const SHRINK_STEP = 0.045;
+const INITIAL_LIVES = 3;
+const KITE_RADIUS = 40;
+const ENEMY_SIZE = 70;
+const ENEMY_COLLISION_RADIUS = 35;
+const DIFFICULTY_INTERVAL_MS = 20_000;
 
-interface Pt { x: number; y: number }
-interface TPt extends Pt { t: number; inBounds: boolean }
+const SYMBOL_EMOJIS: Record<SymbolName, string> = {
+  horizontal_line: '➖',
+  vertical_line: '➗',
+  v_shape: '✌️',
+  inverted_v: '⛰️',
+  circle: '⭕',
+};
 
-interface SymbolDef {
-  name: string;
-  emoji: string;
-  path: Pt[];
-  difficulty: number;
-}
-
-interface SymbolEvent {
-  type: 'symbol_trace';
-  symbolIndex: number;
-  symbolName: string;
-  difficulty: number;
-  canvasScale: number;
-  strokes: TPt[][];
-  templateTotal: number;
-  templateHit: number;
-  completionRate: number;
-  boundaryViolations: number;
-  meanDeviationPx: number;
-  initiationLatencyMs: number;
-  totalDurationMs: number;
-  correctiveStrokes: number;
-  timestamp: number;
-}
-
-// ─── Symbol helpers ───────────────────────────────────────────────────
-
-function linePts(a: Pt, b: Pt, n: number): Pt[] {
-  const r: Pt[] = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    r.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  }
-  return r;
-}
-
-function polyPts(verts: Pt[], n: number, closed: boolean): Pt[] {
-  const r: Pt[] = [];
-  const edges = closed ? verts.length : verts.length - 1;
-  for (let i = 0; i < edges; i++) {
-    const s = linePts(verts[i], verts[(i + 1) % verts.length], n);
-    r.push(...(i === 0 ? s : s.slice(1)));
-  }
-  return r;
-}
-
-function circlePts(n: number): Pt[] {
-  const r: Pt[] = [];
-  for (let i = 0; i <= n; i++) {
-    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-    r.push({ x: 0.5 + 0.38 * Math.cos(a), y: 0.5 + 0.38 * Math.sin(a) });
-  }
-  return r;
-}
-
-function starPts(): Pt[] {
-  const v: Pt[] = [];
-  for (let i = 0; i <= 10; i++) {
-    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-    const rad = i % 2 === 0 ? 0.4 : 0.17;
-    v.push({ x: 0.5 + rad * Math.cos(a), y: 0.5 + rad * Math.sin(a) });
-  }
-  return polyPts(v, 4, false);
-}
-
-function moonPts(): Pt[] {
-  const r: Pt[] = [];
-  for (let i = 0; i <= 20; i++) {
-    const a = (i / 20) * Math.PI * 1.5 + Math.PI * 0.25;
-    r.push({ x: 0.48 + 0.38 * Math.cos(a), y: 0.5 + 0.38 * Math.sin(a) });
-  }
-  for (let i = 20; i >= 0; i--) {
-    const a = (i / 20) * Math.PI * 1.1 + Math.PI * 0.45;
-    r.push({ x: 0.55 + 0.22 * Math.cos(a), y: 0.5 + 0.22 * Math.sin(a) });
-  }
-  return r;
-}
-
-// ─── Symbols (ordered by difficulty) ──────────────────────────────────
-
-const SYMBOLS: SymbolDef[] = [
-  { name: 'line', emoji: '〰️', difficulty: 1,
-    path: linePts({ x: 0.12, y: 0.5 }, { x: 0.88, y: 0.5 }, 20) },
-  { name: 'circle', emoji: '⭕', difficulty: 1,
-    path: circlePts(28) },
-  { name: 'square', emoji: '⬜', difficulty: 2,
-    path: polyPts([{x:0.18,y:0.18},{x:0.82,y:0.18},{x:0.82,y:0.82},{x:0.18,y:0.82}], 8, true) },
-  { name: 'triangle', emoji: '🔺', difficulty: 2,
-    path: polyPts([{x:0.5,y:0.1},{x:0.9,y:0.85},{x:0.1,y:0.85}], 10, true) },
-  { name: 'cross', emoji: '✚', difficulty: 3,
-    path: [...linePts({x:0.15,y:0.5},{x:0.85,y:0.5},14), ...linePts({x:0.5,y:0.15},{x:0.5,y:0.85},14)] },
-  { name: 'zigzag', emoji: '⚡', difficulty: 3,
-    path: polyPts([{x:0.15,y:0.12},{x:0.65,y:0.35},{x:0.25,y:0.58},{x:0.75,y:0.75},{x:0.85,y:0.88}], 8, false) },
-  { name: 'star', emoji: '⭐', difficulty: 4,
-    path: starPts() },
-  { name: 'moon', emoji: '🌙', difficulty: 4,
-    path: moonPts() },
+const ALL_SYMBOLS: SymbolName[] = [
+  'horizontal_line',
+  'vertical_line',
+  'v_shape',
+  'inverted_v',
+  'circle',
 ];
 
-// ─── Component ────────────────────────────────────────────────────────
+interface DifficultyLevel {
+  speed: number;
+  spawnInterval: number;
+  maxEnemies: number;
+}
+
+const DIFFICULTY_LEVELS: DifficultyLevel[] = [
+  { speed: 0.04, spawnInterval: 3500, maxEnemies: 2 },
+  { speed: 0.055, spawnInterval: 3000, maxEnemies: 3 },
+  { speed: 0.07, spawnInterval: 2500, maxEnemies: 3 },
+  { speed: 0.085, spawnInterval: 2200, maxEnemies: 4 },
+  { speed: 0.10, spawnInterval: 1900, maxEnemies: 4 },
+  { speed: 0.12, spawnInterval: 1600, maxEnemies: 5 },
+  { speed: 0.14, spawnInterval: 1400, maxEnemies: 5 },
+  { speed: 0.16, spawnInterval: 1200, maxEnemies: 6 },
+];
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface StrokePoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
+interface Enemy {
+  id: string;
+  symbol: SymbolName;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  speed: number;
+  spawnTimestamp: number;
+  difficultyLevel: number;
+  destroyed: boolean;
+  collided: boolean;
+}
+
+interface LightBeam {
+  id: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startTime: number;
+}
+
+interface Explosion {
+  id: string;
+  x: number;
+  y: number;
+  startTime: number;
+}
+
+// ─── Event types ─────────────────────────────────────────────────────
+
+interface GestureEvent {
+  type: 'gesture';
+  timestamp: number;
+  strokePoints: StrokePoint[];
+  recognizedSymbol: string | null;
+  recognitionScore: number;
+  matchedEnemyId: string | null;
+  outcome: 'hit' | 'substitution_error' | 'unrecognized';
+  strokeDurationMs: number;
+}
+
+interface EnemySpawnEvent {
+  type: 'enemy_spawn';
+  enemyId: string;
+  symbol: string;
+  spawnPosition: { x: number; y: number };
+  spawnTimestamp: number;
+  difficultyLevel: number;
+  speed: number;
+}
+
+interface EnemyDestroyedEvent {
+  type: 'enemy_destroyed';
+  enemyId: string;
+  symbol: string;
+  destroyTimestamp: number;
+  recognitionLatencyMs: number;
+  strokePrecision: number;
+}
+
+interface CollisionEvent {
+  type: 'collision';
+  enemyId: string;
+  symbol: string;
+  timestamp: number;
+  livesRemaining: number;
+}
+
+type GameEvent = GestureEvent | EnemySpawnEvent | EnemyDestroyedEvent | CollisionEvent;
+
+// ─── Component ───────────────────────────────────────────────────────
 
 export default function SkySigilsScreen(): React.JSX.Element {
   const { width, height } = useWindowDimensions();
+  const kiteX = width / 2;
+  const kiteY = height / 2;
 
   const recordEvents = useSessionStore((s) => s.recordEvents);
   const startGame = useSessionStore((s) => s.startGame);
   const endGame = useSessionStore((s) => s.endGame);
 
-  const eventsRef = useRef<SymbolEvent[]>([]);
+  const eventsRef = useRef<GameEvent[]>([]);
   const gameStartRef = useRef(0);
-  const symbolShownRef = useRef(0);
-  const firstTouchRef = useRef(0);
+  const animFrameRef = useRef(0);
   const gameOverRef = useRef(false);
+  const lastSpawnRef = useRef(0);
+  const enemiesRef = useRef<Enemy[]>([]);
+  const livesRef = useRef(INITIAL_LIVES);
+  const strokeRef = useRef<StrokePoint[]>([]);
+  const isDrawingRef = useRef(false);
 
-  // Mutable state for PanResponder
-  const symbolIdxRef = useRef(0);
-  const scaleRef = useRef(INITIAL_SCALE);
-  const hitRef = useRef<Set<number>>(new Set());
-  const strokesRef = useRef<TPt[][]>([]);
-  const curStrokeRef = useRef<TPt[]>([]);
-  const violRef = useRef(0);
-  const devSumRef = useRef(0);
-  const devCountRef = useRef(0);
-  const completedRef = useRef(false);
-
-  // Display state
+  const [enemies, setEnemies] = useState<Enemy[]>([]);
+  const [lives, setLives] = useState(INITIAL_LIVES);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
-  const [, setTick] = useState(0);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [flash, setFlash] = useState<'gold' | 'red' | null>(null);
+  const [drawingTrail, setDrawingTrail] = useState<StrokePoint[]>([]);
+  const [beams, setBeams] = useState<LightBeam[]>([]);
+  const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [showEndAnim, setShowEndAnim] = useState(false);
+  const [starsEarned, setStarsEarned] = useState(false);
 
-  const rerender = useCallback(() => setTick((t) => t + 1), []);
+  // ─── Difficulty ────────────────────────────────────────────────────
 
-  // Compute scaled path from current refs
-  const idx = symbolIdxRef.current;
-  const scale = scaleRef.current;
-  const sym = SYMBOLS[idx % SYMBOLS.length];
-  const cSize = Math.min(width * 0.85, height * 0.5) * scale;
-  const cLeft = (width - cSize) / 2;
-  const cTop = height * 0.2;
-  const scaledPath = sym.path.map((p) => ({
-    x: cLeft + p.x * cSize,
-    y: cTop + p.y * cSize,
-  }));
-  const scaledPathRef = useRef(scaledPath);
-  scaledPathRef.current = scaledPath;
-
-  // ─── Init ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    startGame('sky_sigils');
-    gameStartRef.current = performance.now();
-    symbolShownRef.current = performance.now();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const getDifficulty = useCallback((elapsed: number): DifficultyLevel => {
+    const level = Math.min(
+      DIFFICULTY_LEVELS.length - 1,
+      Math.floor(elapsed / DIFFICULTY_INTERVAL_MS),
+    );
+    return DIFFICULTY_LEVELS[level];
   }, []);
 
-  // ─── Timer ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (gameOverRef.current) { clearInterval(interval); return; }
-      const remaining = GAME_DURATION_MS - (performance.now() - gameStartRef.current);
-      if (remaining <= 0) {
-        gameOverRef.current = true;
-        clearInterval(interval);
-        recordEvents('sky_sigils', eventsRef.current);
-        endGame('sky_sigils');
-        setShowEndAnim(true);
-        setTimeout(() => router.replace('/(game)/transition'), 3000);
-      }
-      setTimeLeft(Math.max(0, remaining));
-    }, 200);
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const getDifficultyIndex = useCallback((elapsed: number): number => {
+    return Math.min(
+      DIFFICULTY_LEVELS.length - 1,
+      Math.floor(elapsed / DIFFICULTY_INTERVAL_MS),
+    );
   }, []);
 
-  // ─── Process a touch point ─────────────────────────────────────────
+  // ─── End game ──────────────────────────────────────────────────────
 
-  const processPoint = useCallback((px: number, py: number): boolean => {
-    const path = scaledPathRef.current;
-    if (path.length === 0 || completedRef.current) return false;
+  const finishGame = useCallback(() => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    cancelAnimationFrame(animFrameRef.current);
+    recordEvents('sky_sigils', eventsRef.current);
+    endGame('sky_sigils');
+    setShowEndAnim(true);
+    setTimeout(() => setStarsEarned(true), 800);
+    setTimeout(() => router.replace('/(game)/transition'), 3500);
+  }, [recordEvents, endGame]);
 
-    let minDist = Infinity;
-    let closestIdx = 0;
-    for (let i = 0; i < path.length; i++) {
-      const dx = px - path[i].x;
-      const dy = py - path[i].y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < minDist) { minDist = d; closestIdx = i; }
+  // ─── Spawn enemy ───────────────────────────────────────────────────
+
+  const spawnEnemy = useCallback((elapsed: number) => {
+    const diff = getDifficulty(elapsed);
+    const diffIdx = getDifficultyIndex(elapsed);
+
+    // Don't exceed max enemies
+    const activeCount = enemiesRef.current.filter((e) => !e.destroyed && !e.collided).length;
+    if (activeCount >= diff.maxEnemies) return;
+
+    const symbol = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
+
+    // Pick random edge
+    const edge = Math.floor(Math.random() * 4);
+    let sx: number, sy: number;
+    switch (edge) {
+      case 0: sx = Math.random() * width; sy = -ENEMY_SIZE; break;        // top
+      case 1: sx = width + ENEMY_SIZE; sy = Math.random() * height; break; // right
+      case 2: sx = Math.random() * width; sy = height + ENEMY_SIZE; break; // bottom
+      default: sx = -ENEMY_SIZE; sy = Math.random() * height; break;       // left
     }
 
-    devSumRef.current += minDist;
-    devCountRef.current += 1;
+    // Direction toward center
+    const angle = Math.atan2(kiteY - sy, kiteX - sx);
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
 
-    const inBounds = minDist <= HIT_RADIUS;
+    const enemy: Enemy = {
+      id: uuid(),
+      symbol,
+      x: sx,
+      y: sy,
+      dx,
+      dy,
+      speed: diff.speed,
+      spawnTimestamp: performance.now(),
+      difficultyLevel: diffIdx,
+      destroyed: false,
+      collided: false,
+    };
 
-    if (inBounds) {
-      // Mark this + nearby template points as hit
-      for (let j = Math.max(0, closestIdx - 2); j <= Math.min(path.length - 1, closestIdx + 2); j++) {
-        const dx = px - path[j].x;
-        const dy = py - path[j].y;
-        if (Math.sqrt(dx * dx + dy * dy) <= HIT_RADIUS * 1.4) {
-          hitRef.current.add(j);
-        }
-      }
-    } else {
-      violRef.current += 1;
+    enemiesRef.current.push(enemy);
+
+    eventsRef.current.push({
+      type: 'enemy_spawn',
+      enemyId: enemy.id,
+      symbol: enemy.symbol,
+      spawnPosition: { x: sx, y: sy },
+      spawnTimestamp: enemy.spawnTimestamp,
+      difficultyLevel: diffIdx,
+      speed: diff.speed,
+    });
+  }, [width, height, kiteX, kiteY, getDifficulty, getDifficultyIndex]);
+
+  // ─── Handle gesture recognition ───────────────────────────────────
+
+  const handleStrokeEnd = useCallback(() => {
+    const points = strokeRef.current;
+    if (points.length < 3) {
+      strokeRef.current = [];
+      setDrawingTrail([]);
+      return;
     }
 
-    // Check completion
-    const rate = hitRef.current.size / path.length;
-    if (rate >= COMPLETION_THRESHOLD) {
-      completedRef.current = true;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const now = performance.now();
+    const strokeDurationMs = points.length > 0 ? now - points[0].t : 0;
+    const result = recognize(points.map((p) => ({ x: p.x, y: p.y })));
 
-      const now = performance.now();
-      const allStrokes = [...strokesRef.current];
-      if (curStrokeRef.current.length > 0) {
-        allStrokes.push([...curStrokeRef.current]);
-      }
-
-      const sIdx = symbolIdxRef.current;
-      const sDef = SYMBOLS[sIdx % SYMBOLS.length];
-
+    if (!result) {
+      // Unrecognized
       eventsRef.current.push({
-        type: 'symbol_trace',
-        symbolIndex: sIdx,
-        symbolName: sDef.name,
-        difficulty: sDef.difficulty,
-        canvasScale: scaleRef.current,
-        strokes: allStrokes,
-        templateTotal: path.length,
-        templateHit: hitRef.current.size,
-        completionRate: rate,
-        boundaryViolations: violRef.current,
-        meanDeviationPx: devCountRef.current > 0 ? devSumRef.current / devCountRef.current : 0,
-        initiationLatencyMs: firstTouchRef.current > 0 ? firstTouchRef.current - symbolShownRef.current : 0,
-        totalDurationMs: now - symbolShownRef.current,
-        correctiveStrokes: Math.max(0, allStrokes.length - 1),
+        type: 'gesture',
         timestamp: now,
+        strokePoints: [...points],
+        recognizedSymbol: null,
+        recognitionScore: 0,
+        matchedEnemyId: null,
+        outcome: 'unrecognized',
+        strokeDurationMs,
       });
-
-      setFeedback('✨');
-      setTimeout(() => {
-        if (gameOverRef.current) return;
-        setFeedback(null);
-        // Reset for next symbol
-        hitRef.current = new Set();
-        strokesRef.current = [];
-        curStrokeRef.current = [];
-        violRef.current = 0;
-        devSumRef.current = 0;
-        devCountRef.current = 0;
-        firstTouchRef.current = 0;
-        completedRef.current = false;
-        symbolIdxRef.current += 1;
-        scaleRef.current = Math.max(MIN_SCALE, scaleRef.current - SHRINK_STEP);
-        symbolShownRef.current = performance.now();
-        rerender();
-      }, 1200);
+      strokeRef.current = [];
+      setDrawingTrail([]);
+      return;
     }
 
-    return inBounds;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Find nearest active enemy with matching symbol
+    const activeEnemies = enemiesRef.current.filter(
+      (e) => !e.destroyed && !e.collided && e.symbol === result.name,
+    );
+
+    if (activeEnemies.length === 0) {
+      // Substitution error — valid symbol but no matching enemy
+      eventsRef.current.push({
+        type: 'gesture',
+        timestamp: now,
+        strokePoints: [...points],
+        recognizedSymbol: result.name,
+        recognitionScore: result.score,
+        matchedEnemyId: null,
+        outcome: 'substitution_error',
+        strokeDurationMs,
+      });
+      strokeRef.current = [];
+      setDrawingTrail([]);
+      return;
+    }
+
+    // Find closest matching enemy to kite center
+    let closestEnemy = activeEnemies[0];
+    let closestDist = Math.sqrt(
+      (closestEnemy.x - kiteX) ** 2 + (closestEnemy.y - kiteY) ** 2,
+    );
+    for (let i = 1; i < activeEnemies.length; i++) {
+      const d = Math.sqrt(
+        (activeEnemies[i].x - kiteX) ** 2 + (activeEnemies[i].y - kiteY) ** 2,
+      );
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = activeEnemies[i];
+      }
+    }
+
+    // Destroy enemy
+    closestEnemy.destroyed = true;
+
+    eventsRef.current.push({
+      type: 'gesture',
+      timestamp: now,
+      strokePoints: [...points],
+      recognizedSymbol: result.name,
+      recognitionScore: result.score,
+      matchedEnemyId: closestEnemy.id,
+      outcome: 'hit',
+      strokeDurationMs,
+    });
+
+    eventsRef.current.push({
+      type: 'enemy_destroyed',
+      enemyId: closestEnemy.id,
+      symbol: closestEnemy.symbol,
+      destroyTimestamp: now,
+      recognitionLatencyMs: now - closestEnemy.spawnTimestamp,
+      strokePrecision: result.score,
+    });
+
+    // Light beam effect
+    const beamId = uuid();
+    setBeams((prev) => [
+      ...prev,
+      { id: beamId, fromX: kiteX, fromY: kiteY, toX: closestEnemy.x, toY: closestEnemy.y, startTime: now },
+    ]);
+    setTimeout(() => setBeams((prev) => prev.filter((b) => b.id !== beamId)), 500);
+
+    // Explosion effect
+    const explId = uuid();
+    setExplosions((prev) => [
+      ...prev,
+      { id: explId, x: closestEnemy.x, y: closestEnemy.y, startTime: now },
+    ]);
+    setTimeout(() => setExplosions((prev) => prev.filter((e) => e.id !== explId)), 500);
+
+    // Flash + haptic
+    setFlash('gold');
+    setTimeout(() => setFlash(null), 300);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    strokeRef.current = [];
+    setDrawingTrail([]);
+  }, [kiteX, kiteY]);
 
   // ─── PanResponder ──────────────────────────────────────────────────
 
@@ -296,30 +375,122 @@ export default function SkySigilsScreen(): React.JSX.Element {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (e) => {
-        if (gameOverRef.current || completedRef.current) return;
+        if (gameOverRef.current) return;
         const { pageX, pageY } = e.nativeEvent;
         const t = performance.now();
-        if (firstTouchRef.current === 0) firstTouchRef.current = t;
-        const inBounds = processPoint(pageX, pageY);
-        curStrokeRef.current = [{ x: pageX, y: pageY, t, inBounds }];
-        rerender();
+        isDrawingRef.current = true;
+        strokeRef.current = [{ x: pageX, y: pageY, t }];
+        setDrawingTrail([{ x: pageX, y: pageY, t }]);
       },
       onPanResponderMove: (e) => {
-        if (gameOverRef.current || completedRef.current) return;
+        if (gameOverRef.current || !isDrawingRef.current) return;
         const { pageX, pageY } = e.nativeEvent;
-        const inBounds = processPoint(pageX, pageY);
-        curStrokeRef.current.push({ x: pageX, y: pageY, t: performance.now(), inBounds });
-        rerender();
+        const t = performance.now();
+        strokeRef.current.push({ x: pageX, y: pageY, t });
+        setDrawingTrail([...strokeRef.current]);
       },
       onPanResponderRelease: () => {
-        if (curStrokeRef.current.length > 0) {
-          strokesRef.current.push([...curStrokeRef.current]);
-        }
-        curStrokeRef.current = [];
-        rerender();
+        if (!isDrawingRef.current) return;
+        isDrawingRef.current = false;
+        handleStrokeEnd();
       },
-    })
+      onPanResponderTerminate: () => {
+        if (!isDrawingRef.current) return;
+        isDrawingRef.current = false;
+        handleStrokeEnd();
+      },
+    }),
   ).current;
+
+  // ─── Game loop ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    startGame('sky_sigils');
+    gameStartRef.current = performance.now();
+    lastSpawnRef.current = performance.now();
+
+    let lastFrameTime = performance.now();
+
+    const loop = () => {
+      if (gameOverRef.current) return;
+
+      const now = performance.now();
+      const elapsed = now - gameStartRef.current;
+      const remaining = GAME_DURATION_MS - elapsed;
+      const dt = now - lastFrameTime;
+      lastFrameTime = now;
+
+      // Timer expired
+      if (remaining <= 0) {
+        finishGame();
+        return;
+      }
+
+      setTimeLeft(remaining);
+
+      // Get current difficulty
+      const diff = getDifficulty(elapsed);
+
+      // Spawn enemies
+      if (now - lastSpawnRef.current >= diff.spawnInterval) {
+        spawnEnemy(elapsed);
+        lastSpawnRef.current = now;
+      }
+
+      // Move enemies & check collisions
+      let lostLife = false;
+      for (const enemy of enemiesRef.current) {
+        if (enemy.destroyed || enemy.collided) continue;
+
+        enemy.x += enemy.dx * enemy.speed * dt;
+        enemy.y += enemy.dy * enemy.speed * dt;
+
+        // Check collision with kite
+        const dist = Math.sqrt((enemy.x - kiteX) ** 2 + (enemy.y - kiteY) ** 2);
+        if (dist < ENEMY_COLLISION_RADIUS + KITE_RADIUS) {
+          enemy.collided = true;
+          livesRef.current -= 1;
+          lostLife = true;
+
+          eventsRef.current.push({
+            type: 'collision',
+            enemyId: enemy.id,
+            symbol: enemy.symbol,
+            timestamp: now,
+            livesRemaining: livesRef.current,
+          });
+
+          setFlash('red');
+          setTimeout(() => setFlash(null), 300);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+          if (livesRef.current <= 0) {
+            setLives(0);
+            finishGame();
+            return;
+          }
+        }
+      }
+
+      if (lostLife) {
+        setLives(livesRef.current);
+      }
+
+      // Clean up off-screen enemies (way past edges)
+      enemiesRef.current = enemiesRef.current.filter((e) => {
+        if (e.destroyed || e.collided) return false;
+        if (e.x < -200 || e.x > width + 200 || e.y < -200 || e.y > height + 200) return false;
+        return true;
+      });
+
+      setEnemies([...enemiesRef.current.filter((e) => !e.destroyed && !e.collided)]);
+      animFrameRef.current = requestAnimationFrame(loop);
+    };
+
+    animFrameRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animFrameRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── End animation ─────────────────────────────────────────────────
 
@@ -328,9 +499,11 @@ export default function SkySigilsScreen(): React.JSX.Element {
       <View style={styles.container}>
         <View style={styles.endWrap}>
           <Text style={styles.endIcon}>✨</Text>
-          <View style={styles.starBadge}>
-            <View style={[styles.starInner, { backgroundColor: Colors.softPurple }]} />
-          </View>
+          {starsEarned && (
+            <View style={styles.starBadge}>
+              <View style={[styles.starInner, { backgroundColor: Colors.softPurple }]} />
+            </View>
+          )}
         </View>
       </View>
     );
@@ -338,81 +511,115 @@ export default function SkySigilsScreen(): React.JSX.Element {
 
   // ─── Main game ─────────────────────────────────────────────────────
 
-  const hitSet = hitRef.current;
-  const completedStrokes = strokesRef.current;
-  const activeStroke = curStrokeRef.current;
-
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      {/* Timer */}
+      <View style={styles.skyGradient} />
+
+      {/* Timer bar */}
       <View style={styles.timerBg}>
         <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
       </View>
 
-      {/* Symbol label */}
-      <View style={styles.labelWrap}>
-        <Text style={styles.labelEmoji}>{sym.emoji}</Text>
+      {/* Lives (suns) */}
+      <View style={styles.livesRow}>
+        {Array.from({ length: INITIAL_LIVES }).map((_, i) => (
+          <Text
+            key={`life-${i}`}
+            style={[styles.lifeIcon, i >= lives && styles.lifeIconLost]}
+          >
+            ☀️
+          </Text>
+        ))}
       </View>
 
-      {/* Cloud container background */}
-      <View style={[styles.cloudBg, {
-        left: cLeft - 16,
-        top: cTop - 16,
-        width: cSize + 32,
-        height: cSize + 32,
-        borderRadius: (cSize + 32) * 0.12,
-      }]} />
+      {/* Flash overlay */}
+      {flash && (
+        <View
+          style={[
+            styles.flash,
+            {
+              backgroundColor:
+                flash === 'gold'
+                  ? 'rgba(255,215,0,0.2)'
+                  : 'rgba(239,68,68,0.2)',
+            },
+          ]}
+        />
+      )}
 
-      {/* Template dots */}
-      {scaledPath.map((p, i) => {
-        const isHit = hitSet.has(i);
-        if (!isHit && i % 2 !== 0) return null;
-        const isStart = i === 0;
+      {/* Enemies */}
+      {enemies.map((enemy) => (
+        <View
+          key={enemy.id}
+          style={[
+            styles.enemy,
+            {
+              left: enemy.x - ENEMY_SIZE / 2,
+              top: enemy.y - ENEMY_SIZE / 2,
+            },
+          ]}
+        >
+          <View style={styles.enemyBody} />
+          <Text style={styles.enemySymbol}>{SYMBOL_EMOJIS[enemy.symbol]}</Text>
+        </View>
+      ))}
+
+      {/* Kite (Breeze) at center */}
+      <View
+        style={[
+          styles.kite,
+          { left: kiteX - 30, top: kiteY - 35 },
+        ]}
+      >
+        <View style={styles.kiteDiamond} />
+        <View style={styles.kiteTailLine} />
+        <View style={[styles.kiteTailBow, { top: 42, left: 22, backgroundColor: Colors.grassGreen }]} />
+        <View style={[styles.kiteTailBow, { top: 54, left: 32, backgroundColor: Colors.goldenYellow }]} />
+      </View>
+
+      {/* Light beams */}
+      {beams.map((beam) => {
+        const dx = beam.toX - beam.fromX;
+        const dy = beam.toY - beam.fromY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
         return (
           <View
-            key={`t-${i}`}
+            key={beam.id}
             style={[
-              styles.templateDot,
-              isHit && styles.templateDotHit,
-              isStart && styles.startDot,
-              { left: p.x - (isStart ? 7 : 4), top: p.y - (isStart ? 7 : 4) },
+              styles.lightBeam,
+              {
+                left: beam.fromX,
+                top: beam.fromY - 1,
+                width: length,
+                transform: [{ rotate: `${angle}deg` }],
+                transformOrigin: 'left center',
+              },
             ]}
           />
         );
       })}
 
-      {/* Completed strokes */}
-      {completedStrokes.map((stroke, si) =>
-        stroke.filter((_, i) => i % 3 === 0).map((p, pi) => (
-          <View
-            key={`s-${si}-${pi}`}
-            style={[
-              styles.strokeDot,
-              !p.inBounds && styles.strokeDotFaded,
-              { left: p.x - 5, top: p.y - 5 },
-            ]}
-          />
-        ))
-      )}
+      {/* Explosions */}
+      {explosions.map((expl) => (
+        <Text
+          key={expl.id}
+          style={[styles.explosion, { left: expl.x - 20, top: expl.y - 20 }]}
+        >
+          💥
+        </Text>
+      ))}
 
-      {/* Active stroke */}
-      {activeStroke.filter((_, i) => i % 2 === 0).map((p, i) => (
+      {/* Drawing trail */}
+      {drawingTrail.filter((_, i) => i % 2 === 0).map((p, i) => (
         <View
-          key={`a-${i}`}
+          key={`trail-${i}`}
           style={[
-            styles.strokeDot,
-            !p.inBounds && styles.strokeDotFaded,
-            { left: p.x - 5, top: p.y - 5 },
+            styles.trailDot,
+            { left: p.x - 6, top: p.y - 6 },
           ]}
         />
       ))}
-
-      {/* Feedback */}
-      {feedback && (
-        <View style={styles.feedbackWrap}>
-          <Text style={styles.feedbackText}>{feedback}</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -420,7 +627,11 @@ export default function SkySigilsScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.skyBlueLight,
+    backgroundColor: Colors.skyBlue,
+  },
+  skyGradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.skyBlue,
   },
   timerBg: {
     position: 'absolute',
@@ -429,68 +640,109 @@ const styles = StyleSheet.create({
     right: 0,
     height: 6,
     backgroundColor: 'rgba(0,0,0,0.08)',
-    zIndex: 10,
+    zIndex: 20,
   },
   timerBar: {
     height: 6,
     backgroundColor: Colors.softPurple,
   },
-  labelWrap: {
+  livesRow: {
     position: 'absolute',
-    top: 20,
-    alignSelf: 'center',
-    zIndex: 10,
-  },
-  labelEmoji: {
-    fontSize: 36,
-  },
-  cloudBg: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.7)',
-  },
-  templateDot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-  },
-  templateDotHit: {
-    backgroundColor: Colors.grassGreen,
-    opacity: 0.85,
-  },
-  startDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: Colors.grassGreen,
-  },
-  strokeDot: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.sunsetOrange,
-    opacity: 0.85,
-  },
-  strokeDotFaded: {
-    opacity: 0.2,
-  },
-  feedbackWrap: {
-    position: 'absolute',
-    top: '45%',
-    alignSelf: 'center',
+    top: 16,
+    left: 20,
+    flexDirection: 'row',
+    gap: 8,
     zIndex: 20,
   },
-  feedbackText: {
-    fontSize: 64,
+  lifeIcon: {
+    fontSize: 28,
+  },
+  lifeIconLost: {
+    opacity: 0.3,
+  },
+  flash: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 15,
+  },
+  enemy: {
+    position: 'absolute',
+    width: ENEMY_SIZE,
+    height: ENEMY_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  enemyBody: {
+    width: ENEMY_SIZE,
+    height: ENEMY_SIZE * 0.65,
+    borderRadius: ENEMY_SIZE * 0.32,
+    backgroundColor: Colors.stormGrey,
+    position: 'absolute',
+    bottom: 0,
+  },
+  enemySymbol: {
+    fontSize: 24,
+    position: 'absolute',
+    top: -2,
+  },
+  kite: {
+    position: 'absolute',
+    width: 60,
+    height: 70,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  kiteDiamond: {
+    width: 44,
+    height: 44,
+    backgroundColor: Colors.sunsetOrange,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    transform: [{ rotate: '45deg' }],
+  },
+  kiteTailLine: {
+    width: 2,
+    height: 30,
+    backgroundColor: Colors.sunsetOrange,
+    marginTop: -6,
+  },
+  kiteTailBow: {
+    position: 'absolute',
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  lightBeam: {
+    position: 'absolute',
+    height: 3,
+    backgroundColor: Colors.goldenYellow,
+    opacity: 0.8,
+    zIndex: 12,
+  },
+  explosion: {
+    position: 'absolute',
+    fontSize: 40,
+    zIndex: 14,
+  },
+  trailDot: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.goldenYellow,
+    shadowColor: Colors.goldenYellow,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 3,
+    zIndex: 8,
   },
   endWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.skyBlue,
   },
   endIcon: {
     fontSize: 100,

@@ -32,6 +32,7 @@ export default function GameHubScreen(): React.JSX.Element {
       star_sequence: '/(game)/star-sequence',
       sky_sigils: '/(game)/sky-sigils',
       sky_sort: '/(game)/sky-sort',
+      wind_trails: '/(game)/wind-trails',
     };
     router.replace(routes[game] as `/${string}`);
   };

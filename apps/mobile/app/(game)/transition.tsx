@@ -11,6 +11,7 @@ const GAME_ROUTES: Record<GameType, string> = {
   star_sequence: '/(game)/star-sequence',
   sky_sigils: '/(game)/sky-sigils',
   sky_sort: '/(game)/sky-sort',
+  wind_trails: '/(game)/wind-trails',
 };
 
 export default function TransitionScreen(): React.JSX.Element {
