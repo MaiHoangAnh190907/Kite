@@ -44,7 +44,7 @@ interface SessionState {
 const STICKER_MAP: Record<GameType, string> = {
   cloud_catch: 'sun',
   star_sequence: 'constellation',
-  wind_trails: 'rainbow',
+  sky_sigils: 'rainbow',
   sky_sort: 'balloon',
 };
 

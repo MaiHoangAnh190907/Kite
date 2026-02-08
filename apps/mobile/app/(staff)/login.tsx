@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -16,8 +15,7 @@ import { tabletVerify } from '../../src/services/api';
 import { useAuthStore } from '../../src/stores/auth-store';
 import { getPendingCount, flushQueue, startBackgroundRetry } from '../../src/services/upload-queue';
 
-const MAX_PIN_LENGTH = 6;
-const MIN_PIN_LENGTH = 4;
+const PIN_LENGTH = 4;
 
 export default function LoginScreen(): React.JSX.Element {
   const [pin, setPin] = useState('');
@@ -63,7 +61,7 @@ export default function LoginScreen(): React.JSX.Element {
   }, [shakeAnim]);
 
   const handleSubmit = useCallback(async (currentPin: string) => {
-    if (currentPin.length < MIN_PIN_LENGTH) return;
+    if (currentPin.length < PIN_LENGTH) return;
     setLoading(true);
     try {
       const result = await tabletVerify(currentPin);
@@ -87,15 +85,11 @@ export default function LoginScreen(): React.JSX.Element {
       return;
     }
 
-    if (key === 'submit') {
-      handleSubmit(pin);
-      return;
-    }
 
     setPin((prev) => {
-      if (prev.length >= MAX_PIN_LENGTH) return prev;
+      if (prev.length >= PIN_LENGTH) return prev;
       const next = prev + key;
-      if (next.length === MAX_PIN_LENGTH) {
+      if (next.length === PIN_LENGTH) {
         setTimeout(() => handleSubmit(next), 100);
       }
       return next;
@@ -106,7 +100,7 @@ export default function LoginScreen(): React.JSX.Element {
     ['1', '2', '3'],
     ['4', '5', '6'],
     ['7', '8', '9'],
-    ['delete', '0', 'submit'],
+    ['delete', '0', ''],
   ];
 
   return (
@@ -123,7 +117,7 @@ export default function LoginScreen(): React.JSX.Element {
         <Animated.View
           style={[styles.dotsContainer, { transform: [{ translateX: shakeAnim }] }]}
         >
-          {Array.from({ length: MAX_PIN_LENGTH }).map((_, i) => (
+          {Array.from({ length: PIN_LENGTH }).map((_, i) => (
             <View
               key={i}
               style={[
@@ -153,32 +147,29 @@ export default function LoginScreen(): React.JSX.Element {
         <View style={styles.keypad}>
           {keys.map((row, rowIdx) => (
             <View key={rowIdx} style={styles.keyRow}>
-              {row.map((key) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[
-                    styles.key,
-                    key === 'delete' && styles.keySpecial,
-                    key === 'submit' && styles.keySubmit,
-                    key === 'submit' && pin.length < MIN_PIN_LENGTH && styles.keyDisabled,
-                  ]}
-                  onPress={() => handleKeyPress(key)}
-                  disabled={loading || (key === 'submit' && pin.length < MIN_PIN_LENGTH)}
-                  activeOpacity={0.7}
-                >
-                  {key === 'delete' ? (
-                    <Text style={styles.keySpecialText}>⌫</Text>
-                  ) : key === 'submit' ? (
-                    loading ? (
-                      <ActivityIndicator color={Colors.white} />
+              {row.map((key, keyIdx) => {
+                if (key === '') {
+                  return <View key={`empty-${keyIdx}`} style={styles.keyEmpty} />;
+                }
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.key,
+                      key === 'delete' && styles.keySpecial,
+                    ]}
+                    onPress={() => handleKeyPress(key)}
+                    disabled={loading}
+                    activeOpacity={0.7}
+                  >
+                    {key === 'delete' ? (
+                      <Text style={styles.keySpecialText}>⌫</Text>
                     ) : (
-                      <Text style={styles.keySubmitText}>→</Text>
-                    )
-                  ) : (
-                    <Text style={styles.keyText}>{key}</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+                      <Text style={styles.keyText}>{key}</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -268,14 +259,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  keyEmpty: {
+    width: 88,
+    height: 88,
+  },
   keySpecial: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  keySubmit: {
-    backgroundColor: Colors.sunsetOrange,
-  },
-  keyDisabled: {
-    opacity: 0.4,
   },
   keyText: {
     fontSize: 32,
@@ -284,11 +273,6 @@ const styles = StyleSheet.create({
   },
   keySpecialText: {
     fontSize: 28,
-    color: Colors.white,
-  },
-  keySubmitText: {
-    fontSize: 32,
-    fontWeight: '700',
     color: Colors.white,
   },
   syncBadge: {

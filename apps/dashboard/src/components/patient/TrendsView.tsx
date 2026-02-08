@@ -33,7 +33,7 @@ const domainConfig: Record<string, { label: string; games: GameType[]; metrics: 
   },
   motor: {
     label: 'Motor',
-    games: ['wind_trails'],
+    games: ['sky_sigils'],
     metrics: ['motor_precision', 'motor_smoothness'],
   },
   processing: {

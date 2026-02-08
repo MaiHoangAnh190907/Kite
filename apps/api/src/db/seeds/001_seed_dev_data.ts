@@ -103,7 +103,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Historical sessions (3-5 per patient over 6 months)
   const sessionDates = ['2025-08-15', '2025-10-20', '2025-12-10', '2026-01-15', '2026-02-05'];
-  const gameTypes = ['cloud_catch', 'star_sequence', 'wind_trails', 'sky_sort'] as const;
+  const gameTypes = ['cloud_catch', 'star_sequence', 'sky_sigils', 'sky_sort'] as const;
 
   for (const patient of patients) {
     const numSessions = patient.firstName === 'Emma' || patient.firstName === 'Liam' ? 5 : 3;
@@ -229,7 +229,7 @@ function generateRealisticMetrics(
         memory_accuracy: clamp(0.50 + ageFactor * 0.25 + sessionFactor, 0, 1),
         learning_rate: clamp(0.02 + sessionFactor * 0.01, -0.1, 0.2),
       };
-    case 'wind_trails':
+    case 'sky_sigils':
       return {
         motor_precision: clamp(15 - ageFactor * 8 - sessionFactor * 10, 1, 40),
         motor_smoothness: clamp(0.05 - ageFactor * 0.02 - sessionFactor * 0.005, 0.001, 0.1),

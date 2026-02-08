@@ -27,7 +27,7 @@ export async function computeSessionMetrics(sessionId: string): Promise<void> {
       case 'star_sequence':
         metrics = flattenMetrics(computeStarSequenceMetrics(events));
         break;
-      case 'wind_trails':
+      case 'sky_sigils':
         metrics = flattenMetrics(computeWindTrailsMetrics(events));
         break;
       case 'sky_sort':

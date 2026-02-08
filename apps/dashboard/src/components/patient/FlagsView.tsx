@@ -15,7 +15,7 @@ interface FlagsViewProps {
 const gameLabels: Record<GameType, string> = {
   cloud_catch: 'Cloud Catch',
   star_sequence: 'Star Sequence',
-  wind_trails: 'Wind Trails',
+  sky_sigils: 'Sky Sigils',
   sky_sort: 'Sky Sort',
 }
 
