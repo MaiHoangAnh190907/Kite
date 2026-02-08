@@ -6,8 +6,8 @@
 
 ## Current State
 **Last Updated:** 2026-02-07
-**Working On:** Integration — Tracks A and C can now pull and start
-**Recently Completed:** Track B (all phases: Foundation, API Endpoints, Metrics Pipeline, Tests)
+**Working On:** Phase C4 (Polish) / Integration testing
+**Recently Completed:** Track C — all admin pages (Staff, Tablets, Import, Analytics)
 **Blocked By:** None
 
 ### Track B Progress
@@ -15,6 +15,12 @@
 - [x] Phase B1: All API endpoints (patients, sessions, admin, metrics, flags)
 - [x] Phase B2: Metrics pipeline (4 calculators, normative, flags)
 - [x] Phase B3: Unit tests (29 passing), typecheck clean
+
+### Track C Progress
+- [x] Phase C1: Setup + Auth (login, MFA, protected routes, auth context)
+- [x] Phase C2: Patient List + Detail (search, filter, sort, pagination, tabs, trends, flags)
+- [x] Phase C3: Admin Panel (staff management, tablets, patient CSV import, usage analytics)
+- [ ] Phase C4: Polish (print styles done, remaining: accessibility pass, performance)
 
 ## Quick Reference
 
