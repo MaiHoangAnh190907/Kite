@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   PanResponder,
+  TouchableOpacity,
   useWindowDimensions,
   Animated,
 } from 'react-native';
@@ -272,7 +273,7 @@ export default function SkySortScreen(): React.JSX.Element {
         recordEvents('sky_sort', eventsRef.current);
         endGame('sky_sort');
         setShowEndAnim(true);
-        setTimeout(() => router.replace('/(game)/transition'), 3000);
+        setTimeout(() => router.replace('/(game)/hub'), 3000);
         return;
       }
 
@@ -331,6 +332,15 @@ export default function SkySortScreen(): React.JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleExit = () => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    cancelAnimationFrame(animFrameRef.current);
+    recordEvents('sky_sort', eventsRef.current);
+    endGame('sky_sort');
+    router.replace('/(game)/hub');
+  };
+
   if (showEndAnim) {
     return (
       <View style={styles.container}>
@@ -350,6 +360,11 @@ export default function SkySortScreen(): React.JSX.Element {
       <View style={styles.timerBg}>
         <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
       </View>
+
+      {/* Exit button */}
+      <TouchableOpacity style={styles.exitBtn} onPress={handleExit} activeOpacity={0.7}>
+        <Text style={styles.exitBtnText}>✕</Text>
+      </TouchableOpacity>
 
       {/* Rule indicator at top */}
       <View style={[styles.ruleWrap, transitioning && styles.ruleTransitioning]}>
@@ -425,6 +440,23 @@ const styles = StyleSheet.create({
   timerBar: {
     height: 6,
     backgroundColor: Colors.sunsetOrange,
+  },
+  exitBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  exitBtnText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.white,
   },
   ruleWrap: {
     position: 'absolute',

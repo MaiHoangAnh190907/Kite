@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   PanResponder,
+  TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -16,7 +17,6 @@ import { Colors } from '../../src/constants/colors';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-const GAME_DURATION_MS = 150_000; // 2.5 minutes
 const MAX_LIVES = 3;
 const CLOUD_SIZE = 70;
 const KITE_WIDTH = 60;
@@ -99,7 +99,6 @@ export default function CloudCatchScreen(): React.JSX.Element {
   const livesRef = useRef(MAX_LIVES);
 
   const [clouds, setClouds] = useState<Cloud[]>([]);
-  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
   const [kiteX, setKiteX] = useState(width / 2);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
@@ -187,7 +186,17 @@ export default function CloudCatchScreen(): React.JSX.Element {
     endGame('cloud_catch');
     setShowEndAnim(true);
     setTimeout(() => setStarsEarned(true), 800);
-    setTimeout(() => router.replace('/(game)/transition'), 3500);
+    setTimeout(() => router.replace('/(game)/hub'), 3500);
+  };
+
+  // ─── Exit button handler ────────────────────────────
+  const handleExit = () => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    cancelAnimationFrame(animFrameRef.current);
+    recordEvents('cloud_catch', eventsRef.current);
+    endGame('cloud_catch');
+    router.replace('/(game)/hub');
   };
 
   // ─── Game loop ──────────────────────────────────
@@ -200,15 +209,6 @@ export default function CloudCatchScreen(): React.JSX.Element {
       if (gameOverRef.current) return;
 
       const now = performance.now();
-      const elapsed = now - gameStartRef.current;
-      const remaining = GAME_DURATION_MS - elapsed;
-
-      if (remaining <= 0) {
-        finishGame(now);
-        return;
-      }
-
-      setTimeLeft(remaining);
 
       // Spawn
       if (now - lastSpawnRef.current >= SPAWN_INTERVAL_MS) {
@@ -340,6 +340,10 @@ export default function CloudCatchScreen(): React.JSX.Element {
 
       {/* HUD */}
       <View style={styles.hud}>
+        {/* Exit button */}
+        <TouchableOpacity style={styles.exitBtn} onPress={handleExit} activeOpacity={0.7}>
+          <Text style={styles.exitBtnText}>✕</Text>
+        </TouchableOpacity>
         <View style={styles.hudItem}>
           <Text style={styles.hudLabel}>Score</Text>
           <Text style={styles.hudValue}>{score}</Text>
@@ -351,13 +355,9 @@ export default function CloudCatchScreen(): React.JSX.Element {
         )}
         <View style={styles.livesContainer}>
           {Array.from({ length: MAX_LIVES }, (_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.lifeHeart,
-                i >= lives && styles.lifeHeartLost,
-              ]}
-            />
+            <Text key={i} style={styles.lifeHeart}>
+              {i < lives ? '❤️' : '🤍'}
+            </Text>
           ))}
         </View>
       </View>
@@ -425,10 +425,6 @@ export default function CloudCatchScreen(): React.JSX.Element {
         <Text style={styles.speedLabel}>Speed</Text>
       </View>
 
-      {/* Timer */}
-      <View style={styles.timerBg}>
-        <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
-      </View>
     </View>
   );
 }
@@ -493,13 +489,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   lifeHeart: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#EF4444',
-  },
-  lifeHeartLost: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    fontSize: 20,
   },
   // Flash overlay
   flash: {
@@ -625,19 +615,19 @@ const styles = StyleSheet.create({
     color: Colors.white,
     top: -1,
   },
-  // Timer
-  timerBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 5,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    zIndex: 20,
+  // Exit button
+  exitBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  timerBar: {
-    height: 5,
-    backgroundColor: Colors.cloudWhite,
+  exitBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.white,
   },
   // End
   sunGlow: {

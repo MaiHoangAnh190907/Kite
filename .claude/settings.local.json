@@ -34,7 +34,8 @@
       "Bash(powershell:*)",
       "Bash(npx expo start:*)",
       "Bash(pnpm add:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

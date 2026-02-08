@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   PanResponder,
+  TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -195,7 +196,7 @@ export default function SkySigilsScreen(): React.JSX.Element {
     endGame('sky_sigils');
     setShowEndAnim(true);
     setTimeout(() => setStarsEarned(true), 800);
-    setTimeout(() => router.replace('/(game)/transition'), 3500);
+    setTimeout(() => router.replace('/(game)/hub'), 3500);
   }, [recordEvents, endGame]);
 
   // ─── Spawn enemy ───────────────────────────────────────────────────
@@ -492,6 +493,17 @@ export default function SkySigilsScreen(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Exit handler ──────────────────────────────────────────────────
+
+  const handleExit = () => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    cancelAnimationFrame(animFrameRef.current);
+    recordEvents('sky_sigils', eventsRef.current);
+    endGame('sky_sigils');
+    router.replace('/(game)/hub');
+  };
+
   // ─── End animation ─────────────────────────────────────────────────
 
   if (showEndAnim) {
@@ -519,6 +531,11 @@ export default function SkySigilsScreen(): React.JSX.Element {
       <View style={styles.timerBg}>
         <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
       </View>
+
+      {/* Exit button */}
+      <TouchableOpacity style={styles.exitBtn} onPress={handleExit} activeOpacity={0.7}>
+        <Text style={styles.exitBtnText}>✕</Text>
+      </TouchableOpacity>
 
       {/* Lives (suns) */}
       <View style={styles.livesRow}>
@@ -645,6 +662,23 @@ const styles = StyleSheet.create({
   timerBar: {
     height: 6,
     backgroundColor: Colors.softPurple,
+  },
+  exitBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  exitBtnText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.white,
   },
   livesRow: {
     position: 'absolute',

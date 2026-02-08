@@ -13,7 +13,6 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '../../src/constants/colors';
 import { useSessionStore } from '../../src/stores/session-store';
 
-const GAME_DURATION_MS = 150_000;
 const GRID_SIZE = 2; // 2x2 grid of stars
 
 const STAR_COLORS = [
@@ -46,10 +45,8 @@ export default function StarSequenceScreen(): React.JSX.Element {
   const endGame = useSessionStore((s) => s.endGame);
 
   const eventsRef = useRef<RoundEvent[]>([]);
-  const gameStartRef = useRef(0);
   const sequenceRef = useRef<number[]>([]);
   const gameOverRef = useRef(false);
-  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS);
   const [phase, setPhase] = useState<Phase>('showing');
   const [sequence, setSequence] = useState<number[]>([]);
   const [showIdx, setShowIdx] = useState(-1);
@@ -71,7 +68,6 @@ export default function StarSequenceScreen(): React.JSX.Element {
   // Start game
   useEffect(() => {
     startGame('star_sequence');
-    gameStartRef.current = performance.now();
     // Build initial 2-star sequence
     const s1 = Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE));
     const s2 = Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE));
@@ -79,28 +75,6 @@ export default function StarSequenceScreen(): React.JSX.Element {
     setSequence([s1, s2]);
     setShowIdx(0);
     setPhase('showing');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Timer
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (gameOverRef.current) { clearInterval(interval); return; }
-      const elapsed = performance.now() - gameStartRef.current;
-      const remaining = GAME_DURATION_MS - elapsed;
-      if (remaining <= 0) {
-        gameOverRef.current = true;
-        clearInterval(interval);
-        setPhase('done');
-        recordEvents('star_sequence', eventsRef.current);
-        endGame('star_sequence');
-        setShowEndAnim(true);
-        setTimeout(() => router.replace('/(game)/transition'), 3000);
-        return;
-      }
-      setTimeLeft(remaining);
-    }, 200);
-    return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -171,7 +145,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
       setTimeout(() => {
         setFeedback(null);
         setShowEndAnim(true);
-        setTimeout(() => router.replace('/(game)/transition'), 3000);
+        setTimeout(() => router.replace('/(game)/hub'), 3000);
       }, 1200);
       return;
     }
@@ -204,6 +178,14 @@ export default function StarSequenceScreen(): React.JSX.Element {
     }
   }, [phase, playerInput, sequence, roundIdx, addToSequence, recordEvents, endGame]);
 
+  const handleExit = () => {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    recordEvents('star_sequence', eventsRef.current);
+    endGame('star_sequence');
+    router.replace('/(game)/hub');
+  };
+
   if (showEndAnim) {
     return (
       <View style={styles.container}>
@@ -221,10 +203,10 @@ export default function StarSequenceScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      {/* Timer */}
-      <View style={styles.timerBg}>
-        <View style={[styles.timerBar, { width: `${(timeLeft / GAME_DURATION_MS) * 100}%` }]} />
-      </View>
+      {/* Exit button */}
+      <TouchableOpacity style={styles.exitBtn} onPress={handleExit} activeOpacity={0.7}>
+        <Text style={styles.exitBtnText}>✕</Text>
+      </TouchableOpacity>
 
       {/* Phase indicator */}
       <View style={styles.phaseWrap}>
@@ -281,17 +263,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timerBg: {
+  exitBtn: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
   },
-  timerBar: {
-    height: 6,
-    backgroundColor: Colors.goldenYellow,
+  exitBtnText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.white,
   },
   phaseWrap: {
     marginBottom: 24,
