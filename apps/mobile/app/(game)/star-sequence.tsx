@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../../src/constants/colors';
 import { useSessionStore } from '../../src/stores/session-store';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const GRID_SIZE = 2; // 2x2 grid of stars
 
@@ -200,6 +201,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
   }
 
   const cellSize = Math.min((width - 100) / GRID_SIZE, (height * 0.45) / GRID_SIZE);
+  const dotSize = cellSize * 0.45;
 
   return (
     <View style={styles.container}>
@@ -242,7 +244,13 @@ export default function StarSequenceScreen(): React.JSX.Element {
               activeOpacity={0.7}
               disabled={phase !== 'input'}
             >
-              <View style={[styles.starDot, { backgroundColor: isLit ? color.fill : color.fill, opacity: isLit ? 1 : 0.4 }]} />
+              <MaterialIcons
+              name="star"
+              size={dotSize}
+              color={color.fill}
+              style={{ opacity: isLit ? 1 : 0.4 }}
+              />
+
             </TouchableOpacity>
           );
         })}
@@ -307,11 +315,6 @@ const styles = StyleSheet.create({
   cellWrong: {
     backgroundColor: 'rgba(239,68,68,0.35)',
     borderColor: Colors.errorRed,
-  },
-  starDot: {
-    width: '50%',
-    height: '50%',
-    borderRadius: 999,
   },
   scoreWrap: {
     marginTop: 24,
