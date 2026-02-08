@@ -14,7 +14,14 @@ import { Colors } from '../../src/constants/colors';
 import { useSessionStore } from '../../src/stores/session-store';
 
 const GAME_DURATION_MS = 150_000;
-const GRID_SIZE = 3; // 3x3 grid of stars
+const GRID_SIZE = 2; // 2x2 grid of stars
+
+const STAR_COLORS = [
+  { fill: '#3B82F6', border: '#60A5FA', bg: 'rgba(59,130,246,0.35)' },  // blue
+  { fill: '#EF4444', border: '#F87171', bg: 'rgba(239,68,68,0.35)' },   // red
+  { fill: '#22C55E', border: '#4ADE80', bg: 'rgba(34,197,94,0.35)' },   // green
+  { fill: '#FACC15', border: '#FDE047', bg: 'rgba(250,204,21,0.35)' },  // yellow
+];
 const SHOW_ON_MS = 500;  // how long a star stays lit
 const SHOW_GAP_MS = 250; // brief off-gap between stars (makes repeats visible)
 
@@ -210,7 +217,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
     );
   }
 
-  const cellSize = Math.min((width - 120) / GRID_SIZE, (height * 0.5) / GRID_SIZE);
+  const cellSize = Math.min((width - 100) / GRID_SIZE, (height * 0.45) / GRID_SIZE);
 
   return (
     <View style={styles.container}>
@@ -228,7 +235,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
 
       {/* Star grid */}
       <View style={styles.gridWrap}>
-        {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, i) => {
+        {STAR_COLORS.map((color, i) => {
           const isLit = phase === 'showing' && !showGap && showIdx >= 0 && showIdx < sequence.length && sequence[showIdx] === i;
           const isPlayerTapped = phase === 'input' && playerInput.includes(i);
           const isFeedbackCorrect = phase === 'feedback' && feedback === 'correct' && sequence.includes(i);
@@ -243,9 +250,9 @@ export default function StarSequenceScreen(): React.JSX.Element {
                   width: cellSize,
                   height: cellSize,
                   borderRadius: cellSize / 2,
+                  borderColor: isLit || isPlayerTapped ? color.border : 'rgba(255,255,255,0.15)',
+                  backgroundColor: isLit ? color.bg : isPlayerTapped ? color.bg : 'rgba(255,255,255,0.1)',
                 },
-                isLit && styles.cellLit,
-                isPlayerTapped && styles.cellTapped,
                 isFeedbackCorrect && styles.cellCorrect,
                 isFeedbackWrong && styles.cellWrong,
               ]}
@@ -253,9 +260,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
               activeOpacity={0.7}
               disabled={phase !== 'input'}
             >
-              <Text style={[styles.starIcon, isLit && styles.starIconLit]}>
-                {isLit || isFeedbackCorrect ? '⭐' : '✦'}
-              </Text>
+              <View style={[styles.starDot, { backgroundColor: isLit ? color.fill : color.fill, opacity: isLit ? 1 : 0.4 }]} />
             </TouchableOpacity>
           );
         })}
@@ -304,19 +309,9 @@ const styles = StyleSheet.create({
     maxWidth: 400,
   },
   cell: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  cellLit: {
-    backgroundColor: 'rgba(255,215,0,0.35)',
-    borderColor: Colors.goldenYellow,
-  },
-  cellTapped: {
-    backgroundColor: 'rgba(179,157,219,0.3)',
-    borderColor: Colors.softPurple,
+    borderWidth: 3,
   },
   cellCorrect: {
     backgroundColor: 'rgba(76,175,80,0.35)',
@@ -326,12 +321,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239,68,68,0.35)',
     borderColor: Colors.errorRed,
   },
-  starIcon: {
-    fontSize: 32,
-    color: 'rgba(255,255,255,0.3)',
-  },
-  starIconLit: {
-    fontSize: 40,
+  starDot: {
+    width: '50%',
+    height: '50%',
+    borderRadius: 999,
   },
   scoreWrap: {
     marginTop: 24,
