@@ -18,12 +18,10 @@ import { recognizeGesture, type GestureSymbol } from '../../src/utils/gesture-re
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-const GAME_DURATION_MS = 150_000; // 150 seconds
+const MAX_LIVES = 3;
 const KITE_WIDTH = 60;
 const KITE_HEIGHT = 70;
-const KITE_Y_OFFSET = 100;
 const WISP_SIZE = 55;
-const WISP_HIT_RADIUS = 45;
 const TRAIL_DOT_SIZE = 8;
 const TRAIL_MAX_POINTS = 60;
 
@@ -35,22 +33,22 @@ const SYMBOL_ICONS: Record<GestureSymbol, string> = {
   circle: '○',
 };
 
-// Difficulty phases
+// Difficulty phases (based on wisps cleared, not time)
 interface Phase {
-  startMs: number;
-  endMs: number;
+  minCleared: number;
   travelTimeMs: number;
   spawnIntervalMs: number;
   symbols: GestureSymbol[];
   multiSymbolChance: number;
+  tripleSymbolChance: number;
 }
 
 const PHASES: Phase[] = [
-  { startMs: 0,      endMs: 30_000,  travelTimeMs: 4000, spawnIntervalMs: 4000, symbols: ['horizontal', 'vertical'],                         multiSymbolChance: 0 },
-  { startMs: 30_000, endMs: 60_000,  travelTimeMs: 3000, spawnIntervalMs: 3000, symbols: ['horizontal', 'vertical', 'v_shape'],               multiSymbolChance: 0 },
-  { startMs: 60_000, endMs: 90_000,  travelTimeMs: 2500, spawnIntervalMs: 2500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0 },
-  { startMs: 90_000, endMs: 120_000, travelTimeMs: 2000, spawnIntervalMs: 2000, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.2 },
-  { startMs: 120_000, endMs: 150_000, travelTimeMs: 1500, spawnIntervalMs: 1500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],   multiSymbolChance: 0.35 },
+  { minCleared: 0,  travelTimeMs: 7000, spawnIntervalMs: 4500, symbols: ['horizontal', 'vertical'],                         multiSymbolChance: 0.4, tripleSymbolChance: 0 },
+  { minCleared: 5,  travelTimeMs: 6000, spawnIntervalMs: 4000, symbols: ['horizontal', 'vertical', 'v_shape'],               multiSymbolChance: 0.5, tripleSymbolChance: 0.1 },
+  { minCleared: 12, travelTimeMs: 5500, spawnIntervalMs: 3500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.6, tripleSymbolChance: 0.2 },
+  { minCleared: 20, travelTimeMs: 5000, spawnIntervalMs: 3000, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.7, tripleSymbolChance: 0.3 },
+  { minCleared: 30, travelTimeMs: 4500, spawnIntervalMs: 2500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.8, tripleSymbolChance: 0.4 },
 ];
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -122,9 +120,9 @@ type GameEvent = WispEvent | GestureEvent | WispReachedEvent;
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function getPhase(elapsed: number): Phase {
+function getPhase(cleared: number): Phase {
   for (let i = PHASES.length - 1; i >= 0; i--) {
-    if (elapsed >= PHASES[i].startMs) return PHASES[i];
+    if (cleared >= PHASES[i].minCleared) return PHASES[i];
   }
   return PHASES[0];
 }
@@ -149,7 +147,7 @@ const SPARKLE_COLORS = ['#FFD700', '#FFA500', '#FF69B4', '#87CEEB', '#90EE90', '
 export default function BreezeSpellsScreen(): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const kiteX = width / 2;
-  const kiteY = height - KITE_Y_OFFSET;
+  const kiteY = height / 2;
 
   const recordEvents = useSessionStore((s) => s.recordEvents);
   const startGame = useSessionStore((s) => s.startGame);
@@ -167,12 +165,14 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
   const touchStartTimeRef = useRef(0);
   const wispsDissipatedRef = useRef(0);
   const wispsReachedRef = useRef(0);
+  const livesRef = useRef(MAX_LIVES);
 
   // Render state
   const [wisps, setWisps] = useState<Wisp[]>([]);
   const [trail, setTrail] = useState<TrailPoint[]>([]);
   const [sparkles, setSparkles] = useState<SparkleParticle[]>([]);
   const [dissipated, setDissipated] = useState(0);
+  const [lives, setLives] = useState(MAX_LIVES);
   const [showEndAnim, setShowEndAnim] = useState(false);
   const [starsEarned, setStarsEarned] = useState(false);
   const [spellFlash, setSpellFlash] = useState<{ x: number; y: number } | null>(null);
@@ -331,10 +331,14 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
     const pos = spawnPosition(edge, width, height);
     const symbols: GestureSymbol[] = [phase.symbols[Math.floor(Math.random() * phase.symbols.length)]];
 
-    // Multi-symbol wisps in later phases
+    // Multi-symbol wisps — longer sequences
     if (Math.random() < phase.multiSymbolChance) {
       const second = phase.symbols[Math.floor(Math.random() * phase.symbols.length)];
       symbols.push(second);
+    }
+    if (Math.random() < phase.tripleSymbolChance) {
+      const third = phase.symbols[Math.floor(Math.random() * phase.symbols.length)];
+      symbols.push(third);
     }
 
     const wisp: Wisp = {
@@ -411,15 +415,8 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
       if (gameOverRef.current) return;
 
       const now = performance.now();
-      const elapsed = now - gameStartRef.current;
 
-      // Time's up
-      if (elapsed >= GAME_DURATION_MS) {
-        finishGame();
-        return;
-      }
-
-      const phase = getPhase(elapsed);
+      const phase = getPhase(wispsDissipatedRef.current);
 
       // Spawn wisps
       if (now - lastSpawnRef.current >= phase.spawnIntervalMs) {
@@ -447,10 +444,12 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
         wisp.x = wisp.startX + (wisp.targetX - wisp.startX) * progress;
         wisp.y = wisp.startY + (wisp.targetY - wisp.startY) * progress;
 
-        // Wisp reached Breeze
+        // Wisp reached Breeze — lose a life
         if (progress >= 1) {
           wisp.alive = false;
           wispsReachedRef.current += 1;
+          livesRef.current -= 1;
+          setLives(livesRef.current);
 
           eventsRef.current.push({
             type: 'wisp_reached',
@@ -459,8 +458,14 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
             timeOnScreen: now - wisp.spawnTimestamp,
           });
 
-          // Gentle bounce — no punishment
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+          // Out of lives — game over
+          if (livesRef.current <= 0) {
+            wispsRef.current = alive;
+            finishGame();
+            return;
+          }
           continue;
         }
 
@@ -531,6 +536,13 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
         <View style={styles.hudItem}>
           <Text style={styles.hudLabel}>Cleared</Text>
           <Text style={styles.hudValue}>{dissipated}</Text>
+        </View>
+        <View style={styles.livesContainer}>
+          {Array.from({ length: MAX_LIVES }).map((_, i) => (
+            <Text key={i} style={[styles.heartIcon, i < lives ? styles.heartFull : styles.heartEmpty]}>
+              {'\u2764'}
+            </Text>
+          ))}
         </View>
       </View>
 
@@ -706,6 +718,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: Colors.white,
+  },
+  livesContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    marginLeft: 'auto',
+  },
+  heartIcon: {
+    fontSize: 26,
+  },
+  heartFull: {
+    color: '#FF4D6D',
+  },
+  heartEmpty: {
+    color: 'rgba(255,255,255,0.3)',
   },
   // Trail
   trailDot: {
