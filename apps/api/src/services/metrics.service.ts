@@ -3,6 +3,7 @@ import { logger } from '../config/logger.js';
 import { computeCloudCatchMetrics } from './calculators/cloud-catch.calculator.js';
 import { computeStarSequenceMetrics } from './calculators/star-sequence.calculator.js';
 import { computeWindTrailsMetrics } from './calculators/wind-trails.calculator.js';
+import { computeSkyBalanceMetrics } from './calculators/sky-balance.calculator.js';
 import { getPercentile } from './normative.service.js';
 import type { GameEvent } from '@kite/shared';
 
@@ -26,8 +27,8 @@ export async function computeSessionMetrics(sessionId: string): Promise<void> {
       case 'star_sequence':
         metrics = flattenMetrics(computeStarSequenceMetrics(events));
         break;
-      case 'sky_sigils':
-        metrics = flattenMetrics(computeWindTrailsMetrics(events));
+      case 'sky_balance':
+        metrics = flattenMetrics(computeSkyBalanceMetrics(events));
         break;
       default:
         logger.warn({ gameType: result.game_type }, 'Unknown game type for metrics');

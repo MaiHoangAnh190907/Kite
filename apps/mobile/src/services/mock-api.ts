@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import type {
   TabletAuthResponse,
   PatientsResponse,
+  CreatePatientResponse,
   CreateSessionResponse,
   UploadEventsResponse,
   CompleteSessionResponse,
@@ -42,7 +43,28 @@ export async function mockTabletVerify(pin: string): Promise<TabletAuthResponse>
     accessToken: 'mock-jwt-tablet-token',
     staffName: 'Sarah',
     clinicName: 'Sunny Pediatrics',
+    tabletId: '55555555-5555-5555-5555-555555555555',
   };
+}
+
+export async function mockCreatePatient(
+  firstName: string,
+  lastName: string,
+  _dateOfBirth: string,
+): Promise<CreatePatientResponse> {
+  await delay(400);
+  const patient = {
+    id: uuid(),
+    firstName,
+    lastInitial: lastName.charAt(0).toUpperCase(),
+    ageMonths: 60,
+    ageDisplay: '5 yrs 0 mos',
+    hasSessionToday: false,
+  };
+  // Add to mock patient list so they show up
+  const list = getMockPatients();
+  list.patients.push(patient);
+  return patient;
 }
 
 export async function mockGetPatientsToday(): Promise<PatientsResponse> {
@@ -56,7 +78,7 @@ export async function mockCreateSession(patientId: string): Promise<CreateSessio
     sessionId: uuid(),
     patientAgeMonths: 62,
     gamesConfig: {
-      games: ['cloud_catch', 'star_sequence', 'sky_sigils'],
+      games: ['cloud_catch', 'star_sequence', 'sky_balance'],
       difficultyPreset: 'age_5',
     },
   };

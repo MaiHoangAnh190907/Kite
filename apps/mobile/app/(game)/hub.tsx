@@ -15,7 +15,7 @@ import type { GameType } from '../../src/types';
 const GAMES: { key: GameType; label: string; icon: string; color: string }[] = [
   { key: 'cloud_catch', label: 'Cloud Catch', icon: '☁️', color: Colors.goldenYellow },
   { key: 'star_sequence', label: 'Color Sequence', icon: '🎨', color: '#6C63FF' },
-  { key: 'sky_sigils', label: 'Sky Sigils', icon: '✨', color: Colors.softPurple },
+  { key: 'sky_balance', label: 'Sky Balance', icon: '⚖️', color: Colors.softPurple },
 ];
 
 export default function GameHubScreen(): React.JSX.Element {
@@ -29,7 +29,7 @@ export default function GameHubScreen(): React.JSX.Element {
     const routes: Record<GameType, string> = {
       cloud_catch: '/(game)/cloud-catch',
       star_sequence: '/(game)/star-sequence',
-      sky_sigils: '/(game)/sky-sigils',
+      sky_balance: '/(game)/sky-balance',
       wind_trails: '/(game)/wind-trails',
     };
     router.replace(routes[game] as `/${string}`);

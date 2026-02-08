@@ -4,7 +4,7 @@ import { validate } from '../middleware/validate.js';
 import { authenticate, requireTablet } from '../middleware/auth.js';
 import { audit } from '../middleware/audit.js';
 import { db } from '../db/connection.js';
-import { decrypt } from '../utils/encryption.js';
+import { encrypt, decrypt } from '../utils/encryption.js';
 import { AppError } from '../middleware/error-handler.js';
 import { computeSessionMetrics } from '../services/metrics.service.js';
 import { evaluateFlags } from '../services/flags.service.js';
@@ -14,6 +14,48 @@ import type { GameType } from '@kite/shared';
 export const sessionRouter: import('express').IRouter = Router();
 
 sessionRouter.use(authenticate);
+
+// POST /sessions/patients — create a new patient from tablet
+const createPatientSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format'),
+});
+
+sessionRouter.post(
+  '/patients',
+  requireTablet,
+  validate(createPatientSchema),
+  audit({ action: 'patient.create', resourceType: 'patient' }),
+  async (req, res, next) => {
+    try {
+      const { firstName, lastName, dateOfBirth } = req.body;
+      const clinicId = req.user!.clinicId;
+
+      const [patient] = await db('patients')
+        .insert({
+          clinic_id: clinicId,
+          first_name_encrypted: encrypt(firstName),
+          last_name_encrypted: encrypt(lastName),
+          date_of_birth_encrypted: encrypt(dateOfBirth),
+          guardian_name_encrypted: encrypt(''),
+        })
+        .returning('*');
+
+      const ageMonths = calculateAgeMonths(new Date(dateOfBirth));
+
+      res.status(201).json({
+        id: patient.id,
+        firstName,
+        lastInitial: lastName.charAt(0),
+        ageMonths,
+        ageDisplay: formatAge(ageMonths),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // GET /sessions/patients/today
 sessionRouter.get(
@@ -94,7 +136,7 @@ sessionRouter.post(
         .returning('*');
 
       const difficultyPreset = getDifficultyPreset(ageMonths);
-      const games: GameType[] = ['cloud_catch', 'star_sequence', 'sky_sigils'];
+      const games: GameType[] = ['cloud_catch', 'star_sequence', 'sky_balance'];
 
       res.status(201).json({
         sessionId: session.id,
@@ -109,7 +151,7 @@ sessionRouter.post(
 
 // POST /sessions/:sessionId/events
 const gameEventsSchema = z.object({
-  gameType: z.enum(['cloud_catch', 'star_sequence', 'sky_sigils']),
+  gameType: z.enum(['cloud_catch', 'star_sequence', 'sky_balance']),
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime(),
   durationMs: z.number().int().positive(),

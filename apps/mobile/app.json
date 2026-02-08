@@ -19,6 +19,9 @@
       "bundleIdentifier": "com.kitehealth.app",
       "requireFullScreen": true
     },
+    "extra": {
+      "apiBaseUrl": "http://10.136.41.217:3000/api/v1"
+    },
     "plugins": [
       "expo-router",
       "expo-secure-store"

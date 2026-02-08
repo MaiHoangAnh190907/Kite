@@ -11,7 +11,7 @@ interface LatestSessionProps {
 const gameConfig: Record<GameType, { label: string; icon: React.ElementType; domain: string }> = {
   cloud_catch: { label: 'Cloud Catch', icon: Cloud, domain: 'Attention' },
   star_sequence: { label: 'Star Sequence', icon: Star, domain: 'Memory' },
-  sky_sigils: { label: 'Sky Sigils', icon: Wind, domain: 'Motor' },
+  sky_balance: { label: 'Sky Balance', icon: Wind, domain: 'Motor' },
 }
 
 const metricDisplayNames: Record<string, string> = {

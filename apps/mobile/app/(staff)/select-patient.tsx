@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { Colors } from '../../src/constants/colors';
@@ -26,9 +26,11 @@ export default function SelectPatientScreen(): React.JSX.Element {
   const selectPatient = useSessionStore((s) => s.selectPatient);
   const clinicName = useAuthStore((s) => s.clinicName);
 
-  useEffect(() => {
-    loadPatients();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadPatients();
+    }, []),
+  );
 
   const loadPatients = async (): Promise<void> => {
     setLoading(true);
@@ -95,8 +97,22 @@ export default function SelectPatientScreen(): React.JSX.Element {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{clinicName ?? 'Clinic'}</Text>
-        <Text style={styles.headerSubtitle}>Today&apos;s Patients</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextArea}>
+            <Text style={styles.headerTitle}>{clinicName ?? 'Clinic'}</Text>
+            <Text style={styles.headerSubtitle}>Patients</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(staff)/add-patient');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search */}
@@ -175,6 +191,14 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingHorizontal: 32,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTextArea: {
+    flex: 1,
+  },
   headerTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -186,6 +210,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.white,
     marginTop: 4,
+  },
+  addButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: Colors.white,
+    marginTop: -2,
   },
   searchContainer: {
     flexDirection: 'row',

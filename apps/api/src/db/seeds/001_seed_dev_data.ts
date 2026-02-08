@@ -103,7 +103,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Historical sessions (3-5 per patient over 6 months)
   const sessionDates = ['2025-08-15', '2025-10-20', '2025-12-10', '2026-01-15', '2026-02-05'];
-  const gameTypes = ['cloud_catch', 'star_sequence', 'sky_sigils'] as const;
+  const gameTypes = ['cloud_catch', 'star_sequence', 'sky_balance'] as const;
 
   for (const patient of patients) {
     const numSessions = patient.firstName === 'Emma' || patient.firstName === 'Liam' ? 5 : 3;
@@ -229,12 +229,15 @@ function generateRealisticMetrics(
         memory_accuracy: clamp(0.50 + ageFactor * 0.25 + sessionFactor, 0, 1),
         learning_rate: clamp(0.02 + sessionFactor * 0.01, -0.1, 0.2),
       };
-    case 'sky_sigils':
+    case 'sky_balance':
       return {
-        motor_precision: clamp(15 - ageFactor * 8 - sessionFactor * 10, 1, 40),
-        motor_smoothness: clamp(0.05 - ageFactor * 0.02 - sessionFactor * 0.005, 0.001, 0.1),
-        completion_rate: clamp(0.65 + ageFactor * 0.2 + sessionFactor, 0, 1),
-        speed_accuracy_ratio: clamp(1.0 + ageFactor * 0.3, 0.3, 2.5),
+        balance_stability: clamp(0.25 - ageFactor * 0.1 - sessionFactor * 0.02, 0.02, 0.5),
+        tilt_variability: clamp(0.18 - ageFactor * 0.06 - sessionFactor * 0.01, 0.02, 0.4),
+        correction_smoothness: clamp(0.35 - ageFactor * 0.1 - sessionFactor * 0.02, 0.05, 0.8),
+        max_balls_balanced: Math.round(clamp(3 + ageFactor * 4 + sessionFactor * 5, 1, 12)),
+        avg_balls_balanced: clamp(1.5 + ageFactor * 2 + sessionFactor, 0.5, 8),
+        drop_rate: clamp(12 - ageFactor * 4 - sessionFactor * 10, 1, 30),
+        avg_time_on_plank: clamp(8000 + ageFactor * 6000 + sessionFactor * 2000, 2000, 30000),
       };
     default:
       return {};

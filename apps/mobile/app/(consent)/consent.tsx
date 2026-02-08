@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '../../src/constants/colors';
 import { createSession } from '../../src/services/api';
 import { useSessionStore } from '../../src/stores/session-store';
+import { useAuthStore } from '../../src/stores/auth-store';
 
 interface ConsentBullet {
   icon: string;
@@ -29,19 +30,20 @@ export default function ConsentScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const selectedPatient = useSessionStore((s) => s.selectedPatient);
   const startSession = useSessionStore((s) => s.startSession);
+  const tabletId = useAuthStore((s) => s.tabletId);
 
   const handleConsent = useCallback(async () => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !tabletId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     try {
-      const result = await createSession(selectedPatient.id, 'mock-tablet-id');
+      const result = await createSession(selectedPatient.id, tabletId);
       startSession(result.sessionId, result.gamesConfig.games);
       router.replace('/(game)/hub');
     } catch {
       setLoading(false);
     }
-  }, [selectedPatient, startSession]);
+  }, [selectedPatient, startSession, tabletId]);
 
   const handleDecline = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

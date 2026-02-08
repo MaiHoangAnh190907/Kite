@@ -4,6 +4,15 @@ export interface TabletAuthResponse {
   accessToken: string;
   staffName: string;
   clinicName: string;
+  tabletId: string;
+}
+
+export interface CreatePatientResponse {
+  id: string;
+  firstName: string;
+  lastInitial: string;
+  ageMonths: number;
+  ageDisplay: string;
 }
 
 export interface PatientListItem {
@@ -38,7 +47,7 @@ export interface CompleteSessionResponse {
   metricsComputed: boolean;
 }
 
-export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_sigils' | 'wind_trails';
+export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_balance' | 'wind_trails';
 
 export interface GameEvent {
   type: string;

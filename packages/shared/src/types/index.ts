@@ -97,7 +97,7 @@ export interface GamesConfig {
   difficultyPreset: string;
 }
 
-export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_sigils';
+export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_balance';
 
 export interface CompleteSessionRequest {
   completedAt: string;

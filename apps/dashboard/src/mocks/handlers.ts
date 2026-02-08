@@ -143,7 +143,7 @@ const mockPatients: PatientListItem[] = firstNames.map((first, i) => ({
 // Mock Patient Detail + Sessions (for first 5 patients)
 // ---------------------------------------------------------------------------
 
-const gameTypes: GameType[] = ['cloud_catch', 'star_sequence', 'sky_sigils']
+const gameTypes: GameType[] = ['cloud_catch', 'star_sequence', 'sky_balance']
 
 const makeSession = (patientIdx: number, sessionIdx: number): SessionSummary => ({
   id: uuid(`session-p${String(patientIdx + 1)}`, sessionIdx + 1),

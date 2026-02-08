@@ -64,6 +64,7 @@ authRouter.post('/tablet/verify', async (req, res, next) => {
       accessToken: result.accessToken,
       staffName: result.staffName,
       clinicName: result.clinicName,
+      tabletId: result.tabletId,
     });
   } catch (err) {
     next(err);

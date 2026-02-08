@@ -66,7 +66,7 @@ export default function LoginScreen(): React.JSX.Element {
     try {
       const result = await tabletVerify(currentPin);
       await SecureStore.setItemAsync('tablet_jwt', result.accessToken);
-      setAuth(result.accessToken, result.staffName, result.clinicName);
+      setAuth(result.accessToken, result.staffName, result.clinicName, result.tabletId);
       router.replace('/(staff)/select-patient');
     } catch {
       triggerShake();

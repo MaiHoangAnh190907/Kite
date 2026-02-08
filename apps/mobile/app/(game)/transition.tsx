@@ -9,7 +9,7 @@ import type { GameType } from '../../src/types';
 const GAME_ROUTES: Record<GameType, string> = {
   cloud_catch: '/(game)/cloud-catch',
   star_sequence: '/(game)/star-sequence',
-  sky_sigils: '/(game)/sky-sigils',
+  sky_balance: '/(game)/sky-balance',
   wind_trails: '/(game)/wind-trails',
 };
 
