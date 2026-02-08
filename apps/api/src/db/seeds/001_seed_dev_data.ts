@@ -103,7 +103,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Historical sessions (3-5 per patient over 6 months)
   const sessionDates = ['2025-08-15', '2025-10-20', '2025-12-10', '2026-01-15', '2026-02-05'];
-  const gameTypes = ['cloud_catch', 'star_sequence', 'sky_sigils', 'sky_sort'] as const;
+  const gameTypes = ['cloud_catch', 'star_sequence', 'sky_sigils'] as const;
 
   for (const patient of patients) {
     const numSessions = patient.firstName === 'Emma' || patient.firstName === 'Liam' ? 5 : 3;
@@ -125,7 +125,7 @@ export async function seed(knex: Knex): Promise<void> {
         completed_at: `${sessionDate}T14:12:00Z`,
         status: 'completed',
         patient_age_months: age,
-        games_completed: 4,
+        games_completed: 3,
         total_duration_ms: 660000,
       });
 
@@ -235,13 +235,6 @@ function generateRealisticMetrics(
         motor_smoothness: clamp(0.05 - ageFactor * 0.02 - sessionFactor * 0.005, 0.001, 0.1),
         completion_rate: clamp(0.65 + ageFactor * 0.2 + sessionFactor, 0, 1),
         speed_accuracy_ratio: clamp(1.0 + ageFactor * 0.3, 0.3, 2.5),
-      };
-    case 'sky_sort':
-      return {
-        processing_speed: clamp(12 + ageFactor * 15 + sessionFactor * 10, 3, 50),
-        sort_accuracy: clamp(0.60 + ageFactor * 0.2 + sessionFactor, 0, 1),
-        switch_cost: clamp(0.20 - ageFactor * 0.08 - sessionFactor * 0.02, 0, 0.5),
-        error_recovery_time: clamp(3000 - ageFactor * 1200 - sessionFactor * 200, 500, 6000),
       };
     default:
       return {};

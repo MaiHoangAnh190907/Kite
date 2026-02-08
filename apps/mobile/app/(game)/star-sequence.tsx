@@ -59,6 +59,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
   const inputTimesRef = useRef<number[]>([]);
   const lastTapRef = useRef(0);
   const [showEndAnim, setShowEndAnim] = useState(false);
+  const [flashIdx, setFlashIdx] = useState<number | null>(null);
 
   const addToSequence = useCallback(() => {
     const next = Math.floor(Math.random() * (GRID_SIZE * GRID_SIZE));
@@ -113,6 +114,9 @@ export default function StarSequenceScreen(): React.JSX.Element {
   const handleTap = useCallback((idx: number) => {
     if (phase !== 'input' || gameOverRef.current) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    setFlashIdx(idx);
+    setTimeout(() => setFlashIdx(null), 200);
 
     const now = performance.now();
     inputTimesRef.current.push(now - lastTapRef.current);
@@ -182,8 +186,6 @@ export default function StarSequenceScreen(): React.JSX.Element {
   const handleExit = () => {
     if (gameOverRef.current) return;
     gameOverRef.current = true;
-    recordEvents('star_sequence', eventsRef.current);
-    endGame('star_sequence');
     router.replace('/(game)/hub');
   };
 
@@ -213,7 +215,7 @@ export default function StarSequenceScreen(): React.JSX.Element {
       {/* Phase indicator */}
       <View style={styles.phaseWrap}>
         <Text style={styles.phaseText}>
-          {phase === 'showing' ? 'Watch the stars...' : phase === 'input' ? 'Your turn!' : phase === 'feedback' ? (feedback === 'correct' ? 'Great!' : 'Oh no!') : ''}
+          {phase === 'showing' ? 'Watch the colors...' : phase === 'input' ? 'Your turn!' : phase === 'feedback' ? (feedback === 'correct' ? 'Great!' : 'Oh no!') : ''}
         </Text>
       </View>
 
@@ -221,9 +223,10 @@ export default function StarSequenceScreen(): React.JSX.Element {
       <View style={styles.gridWrap}>
         {STAR_COLORS.map((color, i) => {
           const isLit = phase === 'showing' && !showGap && showIdx >= 0 && showIdx < sequence.length && sequence[showIdx] === i;
-          const isPlayerTapped = phase === 'input' && playerInput.includes(i);
+          const isFlash = flashIdx === i;
           const isFeedbackCorrect = phase === 'feedback' && feedback === 'correct' && sequence.includes(i);
           const isFeedbackWrong = phase === 'feedback' && feedback === 'wrong' && playerInput[playerInput.length - 1] === i;
+          const active = isLit || isFlash;
 
           return (
             <TouchableOpacity
@@ -234,8 +237,8 @@ export default function StarSequenceScreen(): React.JSX.Element {
                   width: cellSize,
                   height: cellSize,
                   borderRadius: cellSize / 2,
-                  borderColor: isLit || isPlayerTapped ? color.border : 'rgba(255,255,255,0.15)',
-                  backgroundColor: isLit ? color.bg : isPlayerTapped ? color.bg : 'rgba(255,255,255,0.1)',
+                  borderColor: active ? color.border : 'rgba(255,255,255,0.15)',
+                  backgroundColor: active ? color.bg : 'rgba(255,255,255,0.1)',
                 },
                 isFeedbackCorrect && styles.cellCorrect,
                 isFeedbackWrong && styles.cellWrong,
@@ -250,7 +253,6 @@ export default function StarSequenceScreen(): React.JSX.Element {
               color={color.fill}
               style={{ opacity: isLit ? 1 : 0.4 }}
               />
-
             </TouchableOpacity>
           );
         })}

@@ -1,4 +1,4 @@
-import { Cloud, Star, Wind, ArrowUpDown, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Cloud, Star, Wind, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import type { SessionSummary, GameType, FlagStatus } from '@/types/api'
@@ -12,7 +12,6 @@ const gameConfig: Record<GameType, { label: string; icon: React.ElementType; dom
   cloud_catch: { label: 'Cloud Catch', icon: Cloud, domain: 'Attention' },
   star_sequence: { label: 'Star Sequence', icon: Star, domain: 'Memory' },
   sky_sigils: { label: 'Sky Sigils', icon: Wind, domain: 'Motor' },
-  sky_sort: { label: 'Sky Sort', icon: ArrowUpDown, domain: 'Processing' },
 }
 
 const metricDisplayNames: Record<string, string> = {

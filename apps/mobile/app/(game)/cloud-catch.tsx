@@ -194,8 +194,6 @@ export default function CloudCatchScreen(): React.JSX.Element {
     if (gameOverRef.current) return;
     gameOverRef.current = true;
     cancelAnimationFrame(animFrameRef.current);
-    recordEvents('cloud_catch', eventsRef.current);
-    endGame('cloud_catch');
     router.replace('/(game)/hub');
   };
 

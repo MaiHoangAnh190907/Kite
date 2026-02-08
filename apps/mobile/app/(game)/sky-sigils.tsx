@@ -25,13 +25,86 @@ const ENEMY_SIZE = 70;
 const ENEMY_COLLISION_RADIUS = 35;
 const DIFFICULTY_INTERVAL_MS = 20_000;
 
-const SYMBOL_EMOJIS: Record<SymbolName, string> = {
-  horizontal_line: '➖',
-  vertical_line: '➗',
-  v_shape: '✌️',
-  inverted_v: '⛰️',
-  circle: '⭕',
-};
+function SymbolIcon({ symbol }: { symbol: SymbolName }): React.JSX.Element {
+  switch (symbol) {
+    case 'horizontal_line':
+      return (
+        <View style={symbolStyles.container}>
+          <View style={symbolStyles.horizontalLine} />
+        </View>
+      );
+    case 'vertical_line':
+      return (
+        <View style={symbolStyles.container}>
+          <View style={symbolStyles.verticalLine} />
+        </View>
+      );
+    case 'circle':
+      return (
+        <View style={symbolStyles.container}>
+          <View style={symbolStyles.circle} />
+        </View>
+      );
+    case 'v_shape':
+      return (
+        <View style={symbolStyles.container}>
+          <View style={symbolStyles.vWrap}>
+            <View style={[symbolStyles.vBar, { transform: [{ rotate: '30deg' }] }]} />
+            <View style={[symbolStyles.vBar, { transform: [{ rotate: '-30deg' }] }]} />
+          </View>
+        </View>
+      );
+    case 'inverted_v':
+      return (
+        <View style={symbolStyles.container}>
+          <View style={symbolStyles.vWrap}>
+            <View style={[symbolStyles.vBar, { transform: [{ rotate: '-30deg' }] }]} />
+            <View style={[symbolStyles.vBar, { transform: [{ rotate: '30deg' }] }]} />
+          </View>
+        </View>
+      );
+  }
+}
+
+const symbolStyles = StyleSheet.create({
+  container: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  horizontalLine: {
+    width: 28,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.white,
+  },
+  verticalLine: {
+    width: 4,
+    height: 28,
+    borderRadius: 2,
+    backgroundColor: Colors.white,
+  },
+  circle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    backgroundColor: 'transparent',
+  },
+  vWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: -6,
+  },
+  vBar: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: Colors.white,
+  },
+});
 
 const ALL_SYMBOLS: SymbolName[] = [
   'horizontal_line',
@@ -499,8 +572,6 @@ export default function SkySigilsScreen(): React.JSX.Element {
     if (gameOverRef.current) return;
     gameOverRef.current = true;
     cancelAnimationFrame(animFrameRef.current);
-    recordEvents('sky_sigils', eventsRef.current);
-    endGame('sky_sigils');
     router.replace('/(game)/hub');
   };
 
@@ -577,7 +648,9 @@ export default function SkySigilsScreen(): React.JSX.Element {
           ]}
         >
           <View style={styles.enemyBody} />
-          <Text style={styles.enemySymbol}>{SYMBOL_EMOJIS[enemy.symbol]}</Text>
+          <View style={styles.enemySymbol}>
+            <SymbolIcon symbol={enemy.symbol} />
+          </View>
         </View>
       ))}
 
@@ -628,15 +701,30 @@ export default function SkySigilsScreen(): React.JSX.Element {
       ))}
 
       {/* Drawing trail */}
-      {drawingTrail.filter((_, i) => i % 2 === 0).map((p, i) => (
-        <View
-          key={`trail-${i}`}
-          style={[
-            styles.trailDot,
-            { left: p.x - 6, top: p.y - 6 },
-          ]}
-        />
-      ))}
+      {drawingTrail.map((p, i) => {
+        if (i === 0) return null;
+        const prev = drawingTrail[i - 1];
+        const dx = p.x - prev.x;
+        const dy = p.y - prev.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length < 1) return null;
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        return (
+          <View
+            key={`trail-${i}`}
+            style={[
+              styles.trailLine,
+              {
+                left: prev.x,
+                top: prev.y - 2,
+                width: length,
+                transform: [{ rotate: `${angle}deg` }],
+                transformOrigin: 'left center',
+              },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -715,9 +803,10 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   enemySymbol: {
-    fontSize: 24,
     position: 'absolute',
     top: -2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   kite: {
     position: 'absolute',
@@ -759,16 +848,15 @@ const styles = StyleSheet.create({
     fontSize: 40,
     zIndex: 14,
   },
-  trailDot: {
+  trailLine: {
     position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: Colors.goldenYellow,
     shadowColor: Colors.goldenYellow,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
-    shadowRadius: 6,
+    shadowRadius: 4,
     elevation: 3,
     zIndex: 8,
   },

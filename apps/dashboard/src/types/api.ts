@@ -3,7 +3,7 @@ export type UserRole = 'admin' | 'clinician' | 'staff'
 export type FlagSeverity = 'amber' | 'red'
 export type FlagStatus = 'green' | 'amber' | 'red'
 export type FlagType = 'below_threshold' | 'declining_trend' | 'high_variability'
-export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_sigils' | 'sky_sort'
+export type GameType = 'cloud_catch' | 'star_sequence' | 'sky_sigils'
 export type TrendDirection = 'improving' | 'stable' | 'declining'
 
 export interface User {
