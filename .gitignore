@@ -30,6 +30,7 @@ Thumbs.db
 # Secrets
 *.pem
 *.key
+.claude/settings.local.json
 
 # Logs
 *.log
