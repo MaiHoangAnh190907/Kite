@@ -7,6 +7,7 @@ import {
   PanResponder,
   TouchableOpacity,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import { router } from 'expo-router';
 import { v4 as uuid } from 'uuid';
@@ -22,7 +23,7 @@ const MAX_LIVES = 3;
 const KITE_WIDTH = 60;
 const KITE_HEIGHT = 70;
 const WISP_SIZE = 55;
-const TRAIL_DOT_SIZE = 8;
+const TRAIL_LINE_WIDTH = 5;
 const TRAIL_MAX_POINTS = 60;
 
 // Symbol display characters
@@ -44,11 +45,14 @@ interface Phase {
 }
 
 const PHASES: Phase[] = [
-  { minCleared: 0,  travelTimeMs: 7000, spawnIntervalMs: 4500, symbols: ['horizontal', 'vertical'],                         multiSymbolChance: 0.4, tripleSymbolChance: 0 },
-  { minCleared: 5,  travelTimeMs: 6000, spawnIntervalMs: 4000, symbols: ['horizontal', 'vertical', 'v_shape'],               multiSymbolChance: 0.5, tripleSymbolChance: 0.1 },
-  { minCleared: 12, travelTimeMs: 5500, spawnIntervalMs: 3500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.6, tripleSymbolChance: 0.2 },
-  { minCleared: 20, travelTimeMs: 5000, spawnIntervalMs: 3000, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.7, tripleSymbolChance: 0.3 },
-  { minCleared: 30, travelTimeMs: 4500, spawnIntervalMs: 2500, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.8, tripleSymbolChance: 0.4 },
+  { minCleared: 0,  travelTimeMs: 6000, spawnIntervalMs: 4000, symbols: ['horizontal', 'vertical'],                         multiSymbolChance: 0.3,  tripleSymbolChance: 0 },
+  { minCleared: 4,  travelTimeMs: 5000, spawnIntervalMs: 3500, symbols: ['horizontal', 'vertical', 'v_shape'],               multiSymbolChance: 0.4,  tripleSymbolChance: 0.05 },
+  { minCleared: 8,  travelTimeMs: 4200, spawnIntervalMs: 3000, symbols: ['horizontal', 'vertical', 'v_shape'],               multiSymbolChance: 0.5,  tripleSymbolChance: 0.15 },
+  { minCleared: 14, travelTimeMs: 3500, spawnIntervalMs: 2600, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.6,  tripleSymbolChance: 0.25 },
+  { minCleared: 20, travelTimeMs: 3000, spawnIntervalMs: 2200, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.7,  tripleSymbolChance: 0.35 },
+  { minCleared: 28, travelTimeMs: 2600, spawnIntervalMs: 1900, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.8,  tripleSymbolChance: 0.45 },
+  { minCleared: 36, travelTimeMs: 2200, spawnIntervalMs: 1600, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.85, tripleSymbolChance: 0.55 },
+  { minCleared: 45, travelTimeMs: 1900, spawnIntervalMs: 1400, symbols: ['horizontal', 'vertical', 'v_shape', 'circle'],     multiSymbolChance: 0.9,  tripleSymbolChance: 0.65 },
 ];
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -176,6 +180,36 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
   const [showEndAnim, setShowEndAnim] = useState(false);
   const [starsEarned, setStarsEarned] = useState(false);
   const [spellFlash, setSpellFlash] = useState<{ x: number; y: number } | null>(null);
+  const [hitFlash, setHitFlash] = useState(false);
+
+  // Heart animation refs
+  const heartScales = useRef(
+    Array.from({ length: MAX_LIVES }, () => new Animated.Value(1)),
+  ).current;
+  const prevLivesRef = useRef(MAX_LIVES);
+
+  // Animate heart loss
+  useEffect(() => {
+    if (lives < prevLivesRef.current) {
+      const lostIndex = lives; // heart at this index just went empty
+      setHitFlash(true);
+      setTimeout(() => setHitFlash(false), 250);
+
+      Animated.sequence([
+        Animated.timing(heartScales[lostIndex], {
+          toValue: 1.8,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartScales[lostIndex], {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    prevLivesRef.current = lives;
+  }, [lives, heartScales]);
 
   // ─── Find best matching wisp for a recognized gesture ─────────
   const findTargetWisp = useCallback((symbol: GestureSymbol): Wisp | null => {
@@ -539,31 +573,52 @@ export default function BreezeSpellsScreen(): React.JSX.Element {
         </View>
         <View style={styles.livesContainer}>
           {Array.from({ length: MAX_LIVES }).map((_, i) => (
-            <Text key={i} style={[styles.heartIcon, i < lives ? styles.heartFull : styles.heartEmpty]}>
+            <Animated.Text
+              key={i}
+              style={[
+                styles.heartIcon,
+                i < lives ? styles.heartFull : styles.heartEmpty,
+                { transform: [{ scale: heartScales[i] }] },
+              ]}
+            >
               {'\u2764'}
-            </Text>
+            </Animated.Text>
           ))}
         </View>
       </View>
 
-      {/* Drawing trail */}
-      {trail.map((point, i) => {
+      {/* Drawing trail - solid line */}
+      {trail.length > 1 && trail.map((point, i) => {
+        if (i === 0) return null;
+        const prev = trail[i - 1];
+        const dx = point.x - prev.x;
+        const dy = point.y - prev.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) return null;
+        const angle = Math.atan2(dy, dx);
         const age = (performance.now() - point.timestamp) / 500;
         const opacity = Math.max(0, 1 - age);
+        const midX = (prev.x + point.x) / 2;
+        const midY = (prev.y + point.y) / 2;
         return (
           <View
             key={i}
             style={[
-              styles.trailDot,
+              styles.trailSegment,
               {
-                left: point.x - TRAIL_DOT_SIZE / 2,
-                top: point.y - TRAIL_DOT_SIZE / 2,
+                left: midX - len / 2,
+                top: midY - TRAIL_LINE_WIDTH / 2,
+                width: len,
                 opacity,
+                transform: [{ rotate: `${angle}rad` }],
               },
             ]}
           />
         );
       })}
+
+      {/* Hit flash overlay */}
+      {hitFlash && <View style={styles.hitFlashOverlay} />}
 
       {/* Spell flash effect */}
       {spellFlash && (
@@ -734,17 +789,22 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)',
   },
   // Trail
-  trailDot: {
+  trailSegment: {
     position: 'absolute',
-    width: TRAIL_DOT_SIZE,
-    height: TRAIL_DOT_SIZE,
-    borderRadius: TRAIL_DOT_SIZE / 2,
+    height: TRAIL_LINE_WIDTH,
+    borderRadius: TRAIL_LINE_WIDTH / 2,
     backgroundColor: '#FFD700',
     shadowColor: '#FFD700',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 6,
     zIndex: 15,
+  },
+  // Hit flash
+  hitFlashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 60, 60, 0.25)',
+    zIndex: 18,
   },
   // Spell flash
   spellFlash: {
