@@ -77,9 +77,9 @@ pnpm typecheck                       # Type check all packages
 
 ## Team
 
-Built at HackKU 2026.
+Built at C4C 2026
 
 - Patrick King
 - Anh Mai
-- Matheus Maldaner
+- Jaime Breitkreutz
 - My Pham
